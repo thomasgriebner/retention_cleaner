@@ -10,8 +10,9 @@ from .coordinator import RetentionCleanerCoordinator
 SENSOR_DEFS = [
     ("total_files", "Total files", "files"),
     ("older_than_retention", "Older than retention", "files"),
-    ("deleted_last_run", "Deleted last run", "files"),
-    ("last_run", "Last run", None),
+    ("deleted_last_run", "Deleted last cleanup", "files"),
+    ("last_scan", "Last scan", None),
+    ("last_cleanup", "Last cleanup", None),
 ]
 
 
@@ -26,10 +27,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class RetentionCleanerSensor(CoordinatorEntity[RetentionCleanerCoordinator], SensorEntity):
-    def __init__(self, coordinator: RetentionCleanerCoordinator, entry_id: str, key: str, name: str, unit: str | None):
+    def __init__(
+        self,
+        coordinator: RetentionCleanerCoordinator,
+        entry_id: str,
+        key: str,
+        name: str,
+        unit: str | None,
+    ):
         super().__init__(coordinator)
         self._key = key
         self._attr_unique_id = f"{entry_id}_{key}"
+
         folder = coordinator.base_path.split("/")[-1] or coordinator.base_path
         self._attr_name = f"Retention Cleaner {folder} {name}"
         self._attr_native_unit_of_measurement = unit

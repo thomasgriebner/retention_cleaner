@@ -69,9 +69,10 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass = hass
         self.entry = entry
 
-        # Placeholders until real cleanup logic is implemented (step 5)
+        # Visible runtime state for dashboard (separated!)
         self.deleted_last_run: int = 0
-        self.last_run: str = "-"
+        self.last_scan: str = "-"
+        self.last_cleanup: str = "-"
 
         super().__init__(
             hass,
@@ -96,8 +97,27 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def retention_days(self) -> int:
         return int(self.cfg[CONF_RETENTION_DAYS])
 
+    @staticmethod
+    def _now_iso() -> str:
+        # ISO is clean for dashboards/logging and timezone-safe enough for MVP
+        return datetime.now().isoformat(timespec="seconds")
+
     async def async_run_scan_now(self) -> None:
         """Manual scan refresh (no deletion)."""
+        self.last_scan = self._now_iso()
+        await self.async_request_refresh()
+
+    async def async_run_cleanup_now(self) -> None:
+        """
+        Manual cleanup run (deletion logic will be implemented later).
+
+        For now, this acts as a dedicated "cleanup run" marker:
+        - sets last_cleanup timestamp
+        - keeps deleted_last_run at 0
+        - refreshes counts
+        """
+        self.last_cleanup = self._now_iso()
+        # deleted_last_run remains 0 until we implement real deletion
         await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -119,5 +139,6 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "total_files": result.total_files,
             "older_than_retention": result.older_than_retention,
             "deleted_last_run": self.deleted_last_run,
-            "last_run": self.last_run,
+            "last_scan": self.last_scan,
+            "last_cleanup": self.last_cleanup,
         }
