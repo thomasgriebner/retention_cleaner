@@ -27,7 +27,7 @@ class _BaseRetentionCleanerButton(
         self._attr_unique_id = f"{entry.entry_id}_{suffix}"
 
         title = entry.title or coordinator.base_path
-        self._attr_name = f"Retention {title} {label}"
+        self._attr_name = label
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},

@@ -43,7 +43,7 @@ class RetentionCleanerSensor(CoordinatorEntity[RetentionCleanerCoordinator], Sen
         self._attr_unique_id = f"{entry.entry_id}_{key}"
 
         title = entry.title or coordinator.base_path
-        self._attr_name = f"Retention {title} {name}"
+        self._attr_name = name
         self._attr_native_unit_of_measurement = unit
 
         self._attr_device_info = DeviceInfo(
