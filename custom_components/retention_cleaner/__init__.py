@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .coordinator import RetentionCleanerCoordinator
+
+# This integration is configured via config entries only (no YAML config).
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "button"]
 
