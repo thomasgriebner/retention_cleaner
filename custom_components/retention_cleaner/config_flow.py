@@ -97,7 +97,7 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
     """Options flow to edit an existing Retention Cleaner entry."""
 
     def __init__(self, config_entry):
-        self.config_entry = config_entry
+        super().__init__()
 
     async def async_step_init(self, user_input=None):
         errors: dict[str, str] = {}

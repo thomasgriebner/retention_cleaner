@@ -1,3 +1,6 @@
+import logging
+_LOGGER = logging.getLogger(__name__)
+
 from __future__ import annotations
 
 import asyncio
@@ -63,7 +66,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         super().__init__(
             hass,
-            logger=None,
+            logger=_LOGGER,
             name=f"retention_cleaner_{entry.entry_id}",
             update_interval=timedelta(seconds=COORDINATOR_UPDATE_INTERVAL_SECONDS),
         )
