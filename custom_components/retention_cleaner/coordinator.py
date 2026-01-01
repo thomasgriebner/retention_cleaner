@@ -1,9 +1,7 @@
-import logging
-_LOGGER = logging.getLogger(__name__)
-
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -19,6 +17,8 @@ from .const import (
     COORDINATOR_UPDATE_INTERVAL_SECONDS,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 
 @dataclass
 class ScanResult:
@@ -31,7 +31,11 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
     base = Path(base_path)
 
     if not base.exists() or not base.is_dir():
-        return ScanResult(total_files=0, older_than_retention=0, path_available=False)
+        return ScanResult(
+            total_files=0,
+            older_than_retention=0,
+            path_available=False,
+        )
 
     cutoff_ts = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
 
@@ -42,17 +46,22 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
         for p in base.glob(pattern):
             if not p.is_file():
                 continue
+
             total += 1
             try:
                 if p.stat().st_mtime < cutoff_ts:
                     older += 1
             except OSError:
-                # can't stat -> ignore age, but keep total
+                # Cannot stat file → keep it counted, ignore age
                 pass
     except Exception as e:
         raise RuntimeError(str(e)) from e
 
-    return ScanResult(total_files=total, older_than_retention=older, path_available=True)
+    return ScanResult(
+        total_files=total,
+        older_than_retention=older,
+        path_available=True,
+    )
 
 
 class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -60,7 +69,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass = hass
         self.entry = entry
 
-        # These are placeholders until Step 5 (real cleanup)
+        # Placeholders until real cleanup logic is implemented (step 5)
         self.deleted_last_run: int = 0
         self.last_run: str = "-"
 
