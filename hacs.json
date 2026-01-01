@@ -1,0 +1,7 @@
+{
+  "name": "Retention Cleaner",
+  "content_in_root": false,
+  "domain": "retention_cleaner",
+  "country": "DE",
+  "iot_class": "Local Polling"
+}
