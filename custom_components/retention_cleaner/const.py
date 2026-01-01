@@ -1,5 +1,7 @@
 DOMAIN = "retention_cleaner"
 
+COORDINATOR_UPDATE_INTERVAL_SECONDS = 3600
+
 CONF_BASE_PATH = "base_path"
 CONF_PATTERN = "pattern"
 CONF_RETENTION_DAYS = "retention_days"
