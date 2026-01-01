@@ -1,11 +1,12 @@
 {
   "domain": "retention_cleaner",
   "name": "Retention Cleaner",
-  "version": "0.1.0",
+  "codeowners": [],
   "config_flow": true,
   "documentation": "https://github.com/thomasgriebner/retention_cleaner",
-  "issue_tracker": "https://github.com/thomasgriebner/retention_cleaner/issues",
+  "integration_type": "service",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/thomasgriebner/retention_cleaner/issues",
   "requirements": [],
-  "codeowners": []
+  "version": "0.1.0"
 }

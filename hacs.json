@@ -1,7 +1,7 @@
 {
   "name": "Retention Cleaner",
+ "render_readme": true,
   "content_in_root": false,
-  "domain": "retention_cleaner",
+  "homeassistant": "2024.1.0",
   "country": "DE",
-  "iot_class": "Local Polling"
 }
