@@ -1,8 +1,45 @@
 from __future__ import annotations
 
-from homeassistant import config_entries
+import re
+import voluptuous as vol
 
-from .const import DOMAIN
+from homeassistant import config_entries
+from homeassistant.core import callback
+
+from .const import (
+    DOMAIN,
+    CONF_BASE_PATH,
+    CONF_PATTERN,
+    CONF_RETENTION_DAYS,
+    CONF_RUN_AT,
+    CONF_DRY_RUN,
+    CONF_MAX_DELETES,
+    DEFAULT_PATTERN,
+    DEFAULT_RETENTION_DAYS,
+    DEFAULT_RUN_AT,
+    DEFAULT_DRY_RUN,
+    DEFAULT_MAX_DELETES,
+)
+
+TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+
+
+def _validate_base_path(value: str) -> str:
+    value = (value or "").strip()
+    # Safety guard for MVP: only allow /media paths
+    if not value.startswith("/media/"):
+        raise vol.Invalid("base_path_not_media")
+    return value.rstrip("/")
+
+
+def _validate_run_at(value: str) -> str:
+    value = (value or "").strip()
+    if not TIME_RE.match(value):
+        raise vol.Invalid("run_at_invalid")
+    hh, mm = value.split(":")
+    if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
+        raise vol.Invalid("run_at_invalid")
+    return value
 
 
 class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -11,5 +48,94 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        # MVP stub: we will implement the UI form in the next step.
-        return self.async_abort(reason="not_implemented")
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            try:
+                base_path = _validate_base_path(user_input[CONF_BASE_PATH])
+                run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
+
+                data = {
+                    CONF_BASE_PATH: base_path,
+                    CONF_PATTERN: user_input.get(CONF_PATTERN, DEFAULT_PATTERN).strip() or DEFAULT_PATTERN,
+                    CONF_RETENTION_DAYS: int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
+                    CONF_RUN_AT: run_at,
+                    CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
+                    CONF_MAX_DELETES: int(user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)),
+                }
+
+                title = base_path.split("/")[-1] or base_path
+                return self.async_create_entry(title=title, data=data)
+
+            except vol.Invalid as e:
+                # Map our validation codes to translation keys
+                if str(e) in ("base_path_not_media", "run_at_invalid"):
+                    errors["base"] = str(e)
+                else:
+                    errors["base"] = "unknown"
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_BASE_PATH): str,
+                vol.Optional(CONF_PATTERN, default=DEFAULT_PATTERN): str,
+                vol.Optional(CONF_RETENTION_DAYS, default=DEFAULT_RETENTION_DAYS): vol.Coerce(int),
+                vol.Optional(CONF_RUN_AT, default=DEFAULT_RUN_AT): str,
+                vol.Optional(CONF_DRY_RUN, default=DEFAULT_DRY_RUN): bool,
+                vol.Optional(CONF_MAX_DELETES, default=DEFAULT_MAX_DELETES): vol.Coerce(int),
+            }
+        )
+
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return RetentionCleanerOptionsFlow(config_entry)
+
+
+class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
+    """Options flow to edit an existing Retention Cleaner entry."""
+
+    def __init__(self, config_entry):
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        errors: dict[str, str] = {}
+
+        current = {**self.config_entry.data, **self.config_entry.options}
+
+        if user_input is not None:
+            try:
+                base_path = _validate_base_path(user_input[CONF_BASE_PATH])
+                run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
+
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_BASE_PATH: base_path,
+                        CONF_PATTERN: user_input.get(CONF_PATTERN, DEFAULT_PATTERN).strip() or DEFAULT_PATTERN,
+                        CONF_RETENTION_DAYS: int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
+                        CONF_RUN_AT: run_at,
+                        CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
+                        CONF_MAX_DELETES: int(user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)),
+                    },
+                )
+
+            except vol.Invalid as e:
+                if str(e) in ("base_path_not_media", "run_at_invalid"):
+                    errors["base"] = str(e)
+                else:
+                    errors["base"] = "unknown"
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_BASE_PATH, default=current.get(CONF_BASE_PATH, "")): str,
+                vol.Optional(CONF_PATTERN, default=current.get(CONF_PATTERN, DEFAULT_PATTERN)): str,
+                vol.Optional(CONF_RETENTION_DAYS, default=current.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)): vol.Coerce(int),
+                vol.Optional(CONF_RUN_AT, default=current.get(CONF_RUN_AT, DEFAULT_RUN_AT)): str,
+                vol.Optional(CONF_DRY_RUN, default=current.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)): bool,
+                vol.Optional(CONF_MAX_DELETES, default=current.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)): vol.Coerce(int),
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Retention Cleaner",
+        "description": "Configure a folder cleanup rule.",
+        "data": {
+          "base_path": "Base path (must start with /media/)",
+          "pattern": "File pattern (glob)",
+          "retention_days": "Retention days",
+          "run_at": "Daily run time (HH:MM)",
+          "dry_run": "Dry run (do not delete)",
+          "max_deletes": "Max deletes per run"
+        }
+      }
+    },
+    "error": {
+      "base_path_not_media": "The base path must start with /media/.",
+      "run_at_invalid": "Daily run time must be in HH:MM format.",
+      "unknown": "Invalid configuration."
+    }
+  }
+}

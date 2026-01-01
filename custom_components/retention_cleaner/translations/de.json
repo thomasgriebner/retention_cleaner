@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Retention Cleaner",
+        "description": "Konfiguriere eine Aufräumregel für einen Ordner.",
+        "data": {
+          "base_path": "Basis-Pfad (muss mit /media/ beginnen)",
+          "pattern": "Dateimuster (Glob)",
+          "retention_days": "Aufbewahrungsdauer (Tage)",
+          "run_at": "Tägliche Ausführungszeit (HH:MM)",
+          "dry_run": "Testlauf (nichts löschen)",
+          "max_deletes": "Max. Löschungen pro Lauf"
+        }
+      }
+    },
+    "error": {
+      "base_path_not_media": "Der Basis-Pfad muss mit /media/ beginnen.",
+      "run_at_invalid": "Die Uhrzeit muss im Format HH:MM angegeben werden.",
+      "unknown": "Ungültige Konfiguration."
+    }
+  }
+}
