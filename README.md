@@ -1,9 +1,9 @@
 # Retention Cleaner for Home Assistant
 
-[!\[hacs\_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[!\[GitHub Release](https://img.shields.io/github/release/thomasgriebner/retention_cleaner.svg)](https://github.com/thomasgriebner/retention_cleaner/releases)
-[!\[License](https://img.shields.io/github/license/thomasgriebner/retention_cleaner.svg)](LICENSE)
-[!\[Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/thomasgriebner/retention_cleaner/graphs/commit-activity)
+![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+![GitHub Release](https://img.shields.io/github/release/thomasgriebner/retention_cleaner.svg)](https://github.com/thomasgriebner/retention_cleaner/releases)
+![License](https://img.shields.io/github/license/thomasgriebner/retention_cleaner.svg)](LICENSE)
+![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/thomasgriebner/retention_cleaner/graphs/commit-activity)
 
 A Home Assistant custom integration that automatically manages file retention by cleaning up old files based on configurable rules. Perfect for managing camera recordings, snapshots, logs, and temporary files.
 
@@ -51,7 +51,7 @@ Each cleanup rule creates a device with:
 
    * Open HACS → Integrations
    * Click menu (3 dots top right) → Custom repositories
-   * Add repository: `https://github.com/thomasgriebner/retention\_cleaner`
+   * Add repository: `https://github.com/thomasgriebner/retention_cleaner`
    * Category: Integration
    * Click Add
 
@@ -63,14 +63,14 @@ Each cleanup rule creates a device with:
 
 3. **Configure**
 
-   * Go to Settings → Devices \& Services
+   * Go to Settings → Devices & Services
    * Click "+ Add Integration"
    * Search for "Retention Cleaner"
    * Follow the configuration wizard
 
 ### Manual Installation
 
-1. Copy `custom\_components/retention\_cleaner` to your Home Assistant's `custom\_components` directory
+1. Copy `custom_components/retention_cleaner` to your Home Assistant's `custom_components` directory
 2. Restart Home Assistant
 3. Follow configuration steps above
 
@@ -114,7 +114,7 @@ Max Deletes: 100
 #### Recording Cleanup by Camera
 
 ```yaml
-Base Path: /media/frigate/recordings/front\_door
+Base Path: /media/frigate/recordings/front_door
 File Pattern: \*.mp4
 Retention Days: 14
 Cleanup Time: 03:00
@@ -130,8 +130,8 @@ Max Deletes: 500
 |---------|----------|
 | \*\*Path not accessible\*\* | Ensure path exists and starts with `/media/` |
 | \*\*No files found\*\* | Check your glob pattern matches files |
-| \*\*Files not being deleted\*\* | Verify dry\_run is set to false |
-| \*\*Too many files deleted\*\* | Reduce max\_deletes value |
+| \*\*Files not being deleted\*\* | Verify dry_run is set to false |
+| \*\*Too many files deleted\*\* | Reduce max_deletes value |
 
 ## 📝 License
 
