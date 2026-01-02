@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
+
+_LOGGER = logging.getLogger(__name__)
 
 from .const import (
     DOMAIN,
@@ -28,6 +31,7 @@ def _validate_base_path(value: str) -> str:
     value = (value or "").strip()
     # Safety guard for MVP: only allow /media paths
     if not value.startswith("/media/"):
+        _LOGGER.warning("Invalid base path provided (not under /media/): %s", value)
         raise vol.Invalid("base_path_not_media")
     return value.rstrip("/")
 
@@ -35,9 +39,11 @@ def _validate_base_path(value: str) -> str:
 def _validate_run_at(value: str) -> str:
     value = (value or "").strip()
     if not TIME_RE.match(value):
+        _LOGGER.warning("Invalid time format provided: %s (expected HH:MM)", value)
         raise vol.Invalid("run_at_invalid")
     hh, mm = value.split(":")
     if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
+        _LOGGER.warning("Invalid time value provided: %s", value)
         raise vol.Invalid("run_at_invalid")
     return value
 
@@ -65,6 +71,10 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
 
                 title = base_path.split("/")[-1] or base_path
+                _LOGGER.info(
+                    "Creating config entry for path: %s (pattern: %s, retention: %d days)",
+                    base_path, data[CONF_PATTERN], data[CONF_RETENTION_DAYS]
+                )
                 return self.async_create_entry(title=title, data=data)
 
             except vol.Invalid as e:
@@ -72,6 +82,7 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if str(e) in ("base_path_not_media", "run_at_invalid"):
                     errors["base"] = str(e)
                 else:
+                    _LOGGER.error("Unexpected validation error: %s", str(e))
                     errors["base"] = "unknown"
 
         schema = vol.Schema(
@@ -109,6 +120,12 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 base_path = _validate_base_path(user_input[CONF_BASE_PATH])
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
 
+                _LOGGER.info(
+                    "Updating config for path: %s (pattern: %s, retention: %d days)",
+                    base_path, 
+                    user_input.get(CONF_PATTERN, DEFAULT_PATTERN).strip() or DEFAULT_PATTERN,
+                    int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS))
+                )
                 return self.async_create_entry(
                     title="",
                     data={
@@ -125,6 +142,7 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 if str(e) in ("base_path_not_media", "run_at_invalid"):
                     errors["base"] = str(e)
                 else:
+                    _LOGGER.error("Unexpected validation error in options flow: %s", str(e))
                     errors["base"] = "unknown"
 
         schema = vol.Schema(
