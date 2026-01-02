@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+_LOGGER = logging.getLogger(__name__)
 
 from .const import DOMAIN
 from .coordinator import RetentionCleanerCoordinator
@@ -42,6 +46,7 @@ class RetentionCleanerScanNowButton(_BaseRetentionCleanerButton):
         super().__init__(coordinator, entry, "scan_now", "Scan now")
 
     async def async_press(self) -> None:
+        _LOGGER.info("Manual scan triggered for %s", self.coordinator.base_path)
         await self.coordinator.async_run_scan_now()
 
 
@@ -50,4 +55,5 @@ class RetentionCleanerCleanupNowButton(_BaseRetentionCleanerButton):
         super().__init__(coordinator, entry, "cleanup_now", "Run cleanup")
 
     async def async_press(self) -> None:
+        _LOGGER.info("Manual cleanup triggered for %s", self.coordinator.base_path)
         await self.coordinator.async_run_cleanup_now()

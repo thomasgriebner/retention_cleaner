@@ -109,8 +109,14 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
         in total but not considered for age calculation.
     """
     base = Path(base_path)
+    
+    _LOGGER.debug(
+        "Starting scan of %s with pattern '%s' (retention: %d days)",
+        base_path, pattern, retention_days
+    )
 
     if not base.exists() or not base.is_dir():
+        _LOGGER.warning("Path not accessible or not a directory: %s", base_path)
         return ScanResult(total_files=0, older_than_retention=0, path_available=False)
 
     cutoff_ts = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
@@ -131,8 +137,13 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
                 # Cannot stat file → keep it counted, ignore age
                 pass
     except Exception as e:
+        _LOGGER.error("Scan failed for %s: %s", base_path, str(e))
         raise RuntimeError(str(e)) from e
 
+    _LOGGER.debug(
+        "Scan complete for %s: %d total files, %d older than %d days",
+        base_path, total, older, retention_days
+    )
     return ScanResult(total_files=total, older_than_retention=older, path_available=True)
 
 
@@ -168,8 +179,14 @@ def _cleanup_folder(
         - Files that cannot be deleted (OSError) are logged and skipped.
     """
     base = Path(base_path)
+    
+    _LOGGER.debug(
+        "Starting cleanup of %s with pattern '%s' (retention: %d days, dry_run: %s, max_deletes: %d)",
+        base_path, pattern, retention_days, dry_run, max_deletes
+    )
 
     if not base.exists() or not base.is_dir():
+        _LOGGER.warning("Path not accessible or not a directory: %s", base_path)
         return CleanupResult(deleted=0, total_after=0, older_remaining=0, path_available=False)
 
     cutoff_ts = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
@@ -192,8 +209,18 @@ def _cleanup_folder(
 
             if mtime < cutoff_ts:
                 # file is older than retention
-                if dry_run or deleted >= max_deletes:
-                    # keep it (dry run / cap reached)
+                if dry_run:
+                    _LOGGER.debug("[DRY-RUN] Would delete: %s", p.name)
+                    total_after += 1
+                    older_remaining += 1
+                    continue
+                    
+                if deleted >= max_deletes:
+                    if deleted == max_deletes:  # Log once when limit reached
+                        _LOGGER.warning(
+                            "Reached max deletion limit (%d) during cleanup of %s",
+                            max_deletes, base_path
+                        )
                     total_after += 1
                     older_remaining += 1
                     continue
@@ -201,9 +228,11 @@ def _cleanup_folder(
                 try:
                     p.unlink()
                     deleted += 1
+                    _LOGGER.debug("Deleted file: %s", p.name)
                     # deleted -> not remaining
-                except OSError:
+                except OSError as err:
                     # couldn't delete -> remains
+                    _LOGGER.warning("Failed to delete file %s: %s", p.name, err)
                     total_after += 1
                     older_remaining += 1
             else:
@@ -211,8 +240,13 @@ def _cleanup_folder(
                 total_after += 1
 
     except Exception as e:
+        _LOGGER.error("Cleanup operation failed for %s: %s", base_path, str(e))
         raise RuntimeError(str(e)) from e
 
+    _LOGGER.debug(
+        "Cleanup complete for %s: deleted %d files, %d files remaining (%d older than retention)",
+        base_path, deleted, total_after, older_remaining
+    )
     return CleanupResult(
         deleted=deleted,
         total_after=total_after,
@@ -338,9 +372,14 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_remove_listeners()
 
         t = self.run_at
+        _LOGGER.info(
+            "Setting up daily cleanup schedule for %s at %02d:%02d",
+            self.base_path, t.hour, t.minute
+        )
 
         @callback
         async def _run_daily(now: datetime) -> None:
+            _LOGGER.debug("Scheduled cleanup triggered for %s", self.base_path)
             await self.async_run_cleanup_now(triggered_by="schedule")
 
         self._unsub_daily = async_track_time_change(
@@ -358,6 +397,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         orphaned tasks when the integration is unloaded or reloaded.
         """
         if self._unsub_daily:
+            _LOGGER.debug("Removing daily schedule for %s", self.base_path)
             self._unsub_daily()
             self._unsub_daily = None
 
@@ -370,6 +410,8 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         This method is typically called from the UI button entity.
         """
+        """Manual scan refresh (no deletion)."""
+        _LOGGER.debug("Manual scan triggered for %s", self.base_path)
         self.last_scan = _now_iso()
         await self.async_request_refresh()
 
@@ -390,6 +432,8 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             The last_cleanup timestamp is set immediately to provide
             user feedback, even if the operation later fails.
         """
+        """Manual or scheduled cleanup run (deletes files older than retention)."""
+        _LOGGER.info("Starting cleanup (%s) for %s", triggered_by, self.base_path)
         # Mark intent/time first so the dashboard shows something even if scan later fails
         self.last_cleanup = _now_iso()
 
@@ -404,6 +448,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except Exception as e:
             # keep last_cleanup timestamp, but expose error via coordinator failure
+            _LOGGER.error("Cleanup failed for %s: %s", self.base_path, str(e))
             raise UpdateFailed(str(e)) from e
 
         # Update visible state
