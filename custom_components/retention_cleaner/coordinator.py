@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time as dt_time
@@ -23,6 +24,13 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Transient errors that should trigger retry
+TRANSIENT_ERRORS = {
+    errno.EAGAIN,  # Resource temporarily unavailable
+    errno.EBUSY,   # Resource busy
+    errno.EINTR,   # Interrupted system call
+}
 
 
 @dataclass
@@ -68,6 +76,43 @@ def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+async def _retry_async_operation(func, *args, max_retries: int = 3, delay: float = 0.5):
+    """Retry an async operation for transient errors.
+    
+    Args:
+        func: Async function to retry.
+        *args: Arguments to pass to the function.
+        max_retries: Maximum number of retry attempts.
+        delay: Initial delay between retries (doubles each attempt).
+        
+    Returns:
+        Result from the function.
+        
+    Raises:
+        The last exception if all retries fail.
+    """
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            return await func(*args)
+        except OSError as e:
+            if hasattr(e, 'errno') and e.errno in TRANSIENT_ERRORS and attempt < max_retries - 1:
+                wait_time = delay * (2 ** attempt)
+                _LOGGER.debug(
+                    "Transient error (errno %d), retrying in %.1fs (attempt %d/%d): %s",
+                    e.errno, wait_time, attempt + 1, max_retries, str(e)
+                )
+                await asyncio.sleep(wait_time)
+                last_error = e
+                continue
+            raise
+    
+    # If we get here, all retries failed
+    if last_error:
+        raise last_error
+
+
 def _parse_run_at(value: str) -> dt_time:
     """Parse time string into datetime.time object.
     
@@ -102,11 +147,12 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
                    and path availability status.
                    
     Raises:
-        RuntimeError: If an unexpected error occurs during scanning.
+        RuntimeError: For permission errors on directory access or unexpected errors.
         
     Note:
-        Files that cannot be accessed (OSError on stat) are counted
-        in total but not considered for age calculation.
+        - Files that disappear during scan (race condition) are not counted.
+        - Files without read permission are counted but age is unknown.
+        - Other OS errors are logged but don't stop the scan.
     """
     base = Path(base_path)
     
@@ -133,12 +179,23 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
             try:
                 if p.stat().st_mtime < cutoff_ts:
                     older += 1
-            except OSError:
-                # Cannot stat file → keep it counted, ignore age
-                pass
+            except FileNotFoundError:
+                # Race condition: file was deleted between glob and stat
+                _LOGGER.debug("File disappeared during scan (race condition): %s", p.name)
+                total -= 1  # Don't count files that no longer exist
+            except PermissionError as err:
+                _LOGGER.warning("No permission to access file %s: %s", p.name, err)
+                # Keep file counted but can't check age
+            except OSError as err:
+                # Other OS errors (network issues, etc)
+                _LOGGER.debug("Cannot stat file %s: %s", p.name, err)
+                # Keep file counted but can't check age
+    except PermissionError as e:
+        _LOGGER.error("No permission to access directory %s: %s", base_path, str(e))
+        raise RuntimeError(f"Permission denied accessing {base_path}") from e
     except Exception as e:
-        _LOGGER.error("Scan failed for %s: %s", base_path, str(e))
-        raise RuntimeError(str(e)) from e
+        _LOGGER.error("Unexpected error during scan of %s: %s", base_path, str(e))
+        raise RuntimeError(f"Scan failed: {str(e)}") from e
 
     _LOGGER.debug(
         "Scan complete for %s: %d total files, %d older than %d days",
@@ -171,12 +228,15 @@ def _cleanup_folder(
                       files still older than retention, and path status.
                       
     Raises:
-        RuntimeError: If an unexpected error occurs during cleanup.
+        RuntimeError: For disk full, read-only filesystem, permission errors,
+                     or unexpected errors during cleanup.
         
     Safety:
         - Respects max_deletes limit to prevent accidental mass deletion.
         - Dry-run mode allows safe preview of what would be deleted.
-        - Files that cannot be deleted (OSError) are logged and skipped.
+        - Files already deleted (race condition) are counted as success.
+        - Permission errors on individual files are logged but don't stop cleanup.
+        - Critical errors (disk full, read-only FS) abort the operation.
     """
     base = Path(base_path)
     
@@ -202,8 +262,16 @@ def _cleanup_folder(
 
             try:
                 mtime = p.stat().st_mtime
-            except OSError:
-                # can't stat -> keep file, count as remaining
+            except FileNotFoundError:
+                # Race condition: file was deleted between glob and stat
+                _LOGGER.debug("File disappeared before processing (race condition): %s", p.name)
+                continue  # Don't count files that no longer exist
+            except PermissionError as err:
+                _LOGGER.warning("No permission to access file %s: %s", p.name, err)
+                total_after += 1
+                continue
+            except OSError as err:
+                _LOGGER.debug("Cannot stat file %s: %s", p.name, err)
                 total_after += 1
                 continue
 
@@ -230,18 +298,38 @@ def _cleanup_folder(
                     deleted += 1
                     _LOGGER.debug("Deleted file: %s", p.name)
                     # deleted -> not remaining
-                except OSError as err:
-                    # couldn't delete -> remains
-                    _LOGGER.warning("Failed to delete file %s: %s", p.name, err)
+                except FileNotFoundError:
+                    # Race condition: file was already deleted
+                    _LOGGER.debug("File already deleted (race condition): %s", p.name)
+                    deleted += 1  # Count as successful since goal achieved
+                except PermissionError as err:
+                    _LOGGER.warning("No permission to delete file %s: %s", p.name, err)
                     total_after += 1
                     older_remaining += 1
+                except OSError as err:
+                    if err.errno == errno.ENOSPC:
+                        _LOGGER.error("Disk full - cannot complete cleanup operation")
+                        raise RuntimeError("Disk full") from err
+                    elif err.errno == errno.EROFS:
+                        _LOGGER.error("Read-only filesystem - cannot delete files")
+                        raise RuntimeError("Filesystem is read-only") from err
+                    else:
+                        _LOGGER.warning("Failed to delete file %s: [errno %d] %s", p.name, err.errno or 0, err)
+                        total_after += 1
+                        older_remaining += 1
             else:
                 # file is within retention
                 total_after += 1
 
+    except PermissionError as e:
+        _LOGGER.error("No permission to access directory %s: %s", base_path, str(e))
+        raise RuntimeError(f"Permission denied accessing {base_path}") from e
+    except RuntimeError:
+        # Re-raise RuntimeError from disk full/read-only checks
+        raise
     except Exception as e:
-        _LOGGER.error("Cleanup operation failed for %s: %s", base_path, str(e))
-        raise RuntimeError(str(e)) from e
+        _LOGGER.error("Unexpected error during cleanup of %s: %s", base_path, str(e))
+        raise RuntimeError(f"Cleanup failed: {str(e)}") from e
 
     _LOGGER.debug(
         "Cleanup complete for %s: deleted %d files, %d files remaining (%d older than retention)",
@@ -438,14 +526,22 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_cleanup = _now_iso()
 
         try:
-            result: CleanupResult = await asyncio.to_thread(
+            # Use retry logic for cleanup operation
+            result: CleanupResult = await _retry_async_operation(
+                asyncio.to_thread,
                 _cleanup_folder,
                 self.base_path,
                 self.pattern,
                 self.retention_days,
                 self.dry_run,
                 self.max_deletes,
+                max_retries=2,  # Fewer retries for cleanup (safety)
+                delay=1.0  # Longer initial delay
             )
+        except RuntimeError as e:
+            # Specific runtime errors (disk full, read-only) should not be retried
+            _LOGGER.error("Critical error during cleanup of %s: %s", self.base_path, str(e))
+            raise UpdateFailed(str(e)) from e
         except Exception as e:
             # keep last_cleanup timestamp, but expose error via coordinator failure
             _LOGGER.error("Cleanup failed for %s: %s", self.base_path, str(e))
@@ -484,12 +580,19 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_scan = _now_iso()
 
         try:
-            result: ScanResult = await asyncio.to_thread(
+            # Use retry logic for scan operation
+            result: ScanResult = await _retry_async_operation(
+                asyncio.to_thread,
                 _scan_folder,
                 self.base_path,
                 self.pattern,
                 self.retention_days,
+                max_retries=3,
+                delay=0.5
             )
+        except RuntimeError as e:
+            _LOGGER.error("Critical error during scan of %s: %s", self.base_path, str(e))
+            raise UpdateFailed(str(e)) from e
         except Exception as e:
             raise UpdateFailed(str(e)) from e
 
