@@ -1,9 +1,9 @@
 # Retention Cleaner for Home Assistant
 
-![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![GitHub Release](https://img.shields.io/github/release/thomasgriebner/retention_cleaner.svg)](https://github.com/thomasgriebner/retention_cleaner/releases)
-![License](https://img.shields.io/github/license/thomasgriebner/retention_cleaner.svg)](LICENSE)
-![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/thomasgriebner/retention_cleaner/graphs/commit-activity)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![GitHub Release](https://img.shields.io/github/release/thomasgriebner/retention_cleaner.svg)](https://github.com/thomasgriebner/retention_cleaner/releases)
+[![License](https://img.shields.io/github/license/thomasgriebner/retention_cleaner.svg)](LICENSE)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/thomasgriebner/retention_cleaner/graphs/commit-activity)
 
 A Home Assistant custom integration that automatically manages file retention by cleaning up old files based on configurable rules. Perfect for managing camera recordings, snapshots, logs, and temporary files.
 
