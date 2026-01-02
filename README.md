@@ -19,6 +19,7 @@ A Home Assistant custom integration that automatically manages file retention by
 * **⏰ Automated Scheduling**: Daily cleanup at your specified time
 * **🔍 File Scanning**: Monitor file counts before deletion
 * **🎛️ Full UI Configuration**: No YAML editing required
+* **🚦 Smart Error Handling**: Distinguishes between critical and recoverable errors
 
 ### Safety Features
 
@@ -26,6 +27,9 @@ A Home Assistant custom integration that automatically manages file retention by
 * **🧪 Dry-Run Mode**: Test your rules without deleting files
 * **🎚️ Delete Limits**: Configure maximum files to delete per run
 * **✅ Manual Controls**: Test with manual scan/cleanup before automation
+* **🔄 Retry Logic**: Automatic retry for transient errors
+* **⚡ Race Condition Handling**: Gracefully handles files deleted during operations
+* **📝 Comprehensive Logging**: Debug, info, warning, and error levels for full visibility
 
 ### Home Assistant Entities
 
@@ -42,6 +46,7 @@ Each cleanup rule creates a device with:
 * Home Assistant 2024.1.0 or newer
 * HACS (for easy installation)
 * Access to `/media/` directory in Home Assistant
+* Appropriate file permissions for deletion operations
 
 ## 🚀 Installation
 
@@ -73,6 +78,39 @@ Each cleanup rule creates a device with:
 1. Copy `custom_components/retention_cleaner` to your Home Assistant's `custom_components` directory
 2. Restart Home Assistant
 3. Follow configuration steps above
+
+## 🛡️ Advanced Safety & Reliability
+
+### Error Handling
+The integration includes sophisticated error handling:
+- **Automatic Retry**: Transient errors (busy resources, temporary locks) trigger automatic retries with exponential backoff
+- **Specific Error Detection**: Distinguishes between permission errors, disk full, read-only filesystem, and race conditions
+- **Graceful Degradation**: Individual file errors don't stop the entire cleanup process
+- **Critical Error Protection**: Disk full and read-only filesystem errors immediately abort operations
+
+### Logging Levels
+The integration provides detailed logging at multiple levels for troubleshooting:
+
+#### Enable Debug Logging
+Add to your `configuration.yaml`:
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.retention_cleaner: debug
+```
+
+#### Log Levels Explained
+- **DEBUG**: Detailed file operations, scan progress, individual deletions
+- **INFO**: Scheduled runs, cleanup summaries, configuration changes
+- **WARNING**: Permission issues, file access problems, limit reached
+- **ERROR**: Critical failures, disk full, read-only filesystem
+
+#### View Logs
+After enabling debug logging and restarting Home Assistant:
+1. Go to **Settings** → **System** → **Logs**
+2. Or check the log file: `home-assistant.log`
+3. Filter for "retention_cleaner" to see relevant entries
 
 ## ⚙️ Configuration
 
@@ -132,6 +170,9 @@ Max Deletes: 500
 | \*\*No files found\*\* | Check your glob pattern matches files |
 | \*\*Files not being deleted\*\* | Verify dry_run is set to false |
 | \*\*Too many files deleted\*\* | Reduce max_deletes value |
+| \*\*Permission denied\*\* | Check file/folder permissions for Home Assistant user |
+| \*\*Disk full errors\*\* | Free up disk space before running cleanup |
+| \*\*Files disappearing\*\* | Normal behavior - handles race conditions automatically |
 
 ## 📝 License
 
