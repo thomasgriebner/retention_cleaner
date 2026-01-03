@@ -1,5 +1,6 @@
 {
   "name": "Retention Cleaner",
   "content_in_root": false,
+  "icon": true,
   "render_readme": true
 }
