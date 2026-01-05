@@ -48,6 +48,33 @@ def _validate_run_at(value: str) -> str:
     return value
 
 
+def _validate_pattern(value: str) -> str:
+    """Validate glob pattern and warn about dangerous patterns."""
+    value = (value or "*").strip()
+    
+    # Check for EXTREMELY dangerous patterns that match ALL files
+    EXTREMELY_DANGEROUS = ["*", "**/*"]
+    if value in EXTREMELY_DANGEROUS:
+        _LOGGER.warning("Extremely dangerous pattern '%s' matches ALL files", value)
+        raise vol.Invalid("pattern_too_broad")
+    
+    # Check for invalid syntax
+    if "***" in value:
+        _LOGGER.warning("Invalid pattern syntax: triple asterisk in '%s'", value)
+        raise vol.Invalid("pattern_invalid_syntax")
+    
+    # Check for unclosed brackets/braces
+    if value.count("{") != value.count("}"):
+        _LOGGER.warning("Invalid pattern: unclosed braces in '%s'", value)
+        raise vol.Invalid("pattern_invalid_syntax")
+    
+    if value.count("[") != value.count("]"):
+        _LOGGER.warning("Invalid pattern: unclosed brackets in '%s'", value)
+        raise vol.Invalid("pattern_invalid_syntax")
+    
+    return value
+
+
 class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Retention Cleaner."""
 
@@ -59,11 +86,12 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 base_path = _validate_base_path(user_input[CONF_BASE_PATH])
+                pattern = _validate_pattern(user_input.get(CONF_PATTERN, DEFAULT_PATTERN))
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
 
                 data = {
                     CONF_BASE_PATH: base_path,
-                    CONF_PATTERN: user_input.get(CONF_PATTERN, DEFAULT_PATTERN).strip() or DEFAULT_PATTERN,
+                    CONF_PATTERN: pattern,
                     CONF_RETENTION_DAYS: int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
                     CONF_RUN_AT: run_at,
                     CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
@@ -79,8 +107,9 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             except vol.Invalid as e:
                 # Map our validation codes to translation keys
-                if str(e) in ("base_path_not_media", "run_at_invalid"):
-                    errors["base"] = str(e)
+                error_key = str(e)
+                if error_key in ("base_path_not_media", "run_at_invalid", "pattern_too_broad", "pattern_invalid_syntax"):
+                    errors["base"] = error_key
                 else:
                     _LOGGER.error("Unexpected validation error: %s", str(e))
                     errors["base"] = "unknown"
@@ -118,19 +147,18 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             try:
                 base_path = _validate_base_path(user_input[CONF_BASE_PATH])
+                pattern = _validate_pattern(user_input.get(CONF_PATTERN, DEFAULT_PATTERN))
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
 
                 _LOGGER.info(
                     "Updating config for path: %s (pattern: %s, retention: %d days)",
-                    base_path, 
-                    user_input.get(CONF_PATTERN, DEFAULT_PATTERN).strip() or DEFAULT_PATTERN,
-                    int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS))
+                    base_path, pattern, int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS))
                 )
                 return self.async_create_entry(
                     title="",
                     data={
                         CONF_BASE_PATH: base_path,
-                        CONF_PATTERN: user_input.get(CONF_PATTERN, DEFAULT_PATTERN).strip() or DEFAULT_PATTERN,
+                        CONF_PATTERN: pattern,
                         CONF_RETENTION_DAYS: int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
                         CONF_RUN_AT: run_at,
                         CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
@@ -139,8 +167,9 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 )
 
             except vol.Invalid as e:
-                if str(e) in ("base_path_not_media", "run_at_invalid"):
-                    errors["base"] = str(e)
+                error_key = str(e)
+                if error_key in ("base_path_not_media", "run_at_invalid", "pattern_too_broad", "pattern_invalid_syntax"):
+                    errors["base"] = error_key
                 else:
                     _LOGGER.error("Unexpected validation error in options flow: %s", str(e))
                     errors["base"] = "unknown"

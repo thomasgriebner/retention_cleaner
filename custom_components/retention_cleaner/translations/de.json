@@ -17,6 +17,8 @@
     "error": {
       "base_path_not_media": "Der Basis-Pfad muss mit /media/ beginnen.",
       "run_at_invalid": "Die Uhrzeit muss im Format HH:MM angegeben werden.",
+      "pattern_too_broad": "Dieses Muster erfasst ALLE Dateien! Bitte spezifischer angeben, um Datenverlust zu vermeiden.",
+      "pattern_invalid_syntax": "Ungültige Glob-Muster-Syntax. Überprüfen Sie fehlende Klammern oder ungültige Platzhalter.",
       "unknown": "Ungültige Konfiguration."
     }
   }
