@@ -66,17 +66,17 @@ class CleanupResult:
     deleted_bytes: int = 0
 
 
-def _now_iso() -> str:
-    """Generate current timestamp in ISO format.
-    
+def _now() -> datetime:
+    """Generate current timestamp.
+
     Returns:
-        str: Current datetime as ISO string with second precision.
-        
+        datetime: Current datetime object.
+
     Example:
-        >>> _now_iso()
-        '2024-01-02T15:30:45'
+        >>> _now()
+        datetime.datetime(2024, 1, 2, 15, 30, 45)
     """
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now()
 
 
 async def _retry_async_operation(func, *args, max_retries: int = 3, delay: float = 0.5):
@@ -364,8 +364,8 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hass: Home Assistant instance.
         entry: Config entry containing user configuration.
         deleted_last_run: Number of files deleted in the last cleanup.
-        last_scan: ISO timestamp of the last scan operation.
-        last_cleanup: ISO timestamp of the last cleanup operation.
+        last_scan: Datetime of the last scan operation.
+        last_cleanup: Datetime of the last cleanup operation.
     """
     
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -381,8 +381,8 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Visible runtime state for dashboard (separated!)
         self.deleted_last_run: int = 0
         self.deleted_bytes_last_run: int = 0
-        self.last_scan: str | None = None
-        self.last_cleanup: str | None = None
+        self.last_scan: datetime | None = None
+        self.last_cleanup: datetime | None = None
         self.last_scan_duration_ms: int = 0
         self.last_cleanup_duration_ms: int = 0
 
@@ -512,7 +512,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         """Manual scan refresh (no deletion)."""
         _LOGGER.debug("Manual scan triggered for %s", self.base_path)
-        self.last_scan = _now_iso()
+        self.last_scan = _now()
         await self.async_request_refresh()
 
     async def async_run_cleanup_now(self, triggered_by: str = "manual") -> None:
@@ -535,7 +535,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Manual or scheduled cleanup run (deletes files older than retention)."""
         _LOGGER.info("Starting cleanup (%s) for %s", triggered_by, self.base_path)
         # Mark intent/time first so the dashboard shows something even if scan later fails
-        self.last_cleanup = _now_iso()
+        self.last_cleanup = _now()
 
         # Measure cleanup duration
         start_time = time.perf_counter()
@@ -596,7 +596,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             UpdateFailed: If the scan operation fails.
         """
         # Any refresh means: we updated the values
-        self.last_scan = _now_iso()
+        self.last_scan = _now()
 
         # Measure scan duration
         start_time = time.perf_counter()
