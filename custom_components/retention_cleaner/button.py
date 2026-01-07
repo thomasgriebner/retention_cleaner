@@ -51,7 +51,6 @@ class _BaseRetentionCleanerButton(
             name=title,
             manufacturer="Retention Cleaner",
             model="Folder retention rule",
-            configuration_url=coordinator.base_path,
         )
 
 
