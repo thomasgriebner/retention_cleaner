@@ -4,10 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [1.0.8]
+## [1.0.9]
 
 ### Fixed
 - Use datetime objects with UTC timezone for TIMESTAMP device class sensors
+
+## [1.0.8]
+
+### Fixed
+- (Reserved for already released version)
 
 ## [1.0.7]
 
@@ -77,10 +82,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Config flow for UI configuration
 - Glob pattern support
 
-<<<<<<< HEAD
+[1.0.9]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.7...v1.0.8
-=======
->>>>>>> origin/main
 [1.0.7]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.4...v1.0.5
