@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time as dt_time
 from pathlib import Path
@@ -56,11 +57,13 @@ class CleanupResult:
         total_after: Total files remaining after cleanup.
         older_remaining: Files older than retention that were not deleted.
         path_available: Whether the base path exists and is accessible.
+        deleted_bytes: Total size of deleted files in bytes.
     """
     deleted: int
     total_after: int
     older_remaining: int
     path_available: bool
+    deleted_bytes: int = 0
 
 
 def _now_iso() -> str:
@@ -247,11 +250,12 @@ def _cleanup_folder(
 
     if not base.exists() or not base.is_dir():
         _LOGGER.warning("Path not accessible or not a directory: %s", base_path)
-        return CleanupResult(deleted=0, total_after=0, older_remaining=0, path_available=False)
+        return CleanupResult(deleted=0, total_after=0, older_remaining=0, path_available=False, deleted_bytes=0)
 
     cutoff_ts = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
 
     deleted = 0
+    deleted_bytes = 0
     total_after = 0
     older_remaining = 0
 
@@ -261,7 +265,10 @@ def _cleanup_folder(
                 continue
 
             try:
-                mtime = p.stat().st_mtime
+                # Get file stats (mtime and size) in one call for efficiency
+                file_stat = p.stat()
+                mtime = file_stat.st_mtime
+                file_size = file_stat.st_size
             except FileNotFoundError:
                 # Race condition: file was deleted between glob and stat
                 _LOGGER.debug("File disappeared before processing (race condition): %s", p.name)
@@ -296,7 +303,8 @@ def _cleanup_folder(
                 try:
                     p.unlink()
                     deleted += 1
-                    _LOGGER.debug("Deleted file: %s", p.name)
+                    deleted_bytes += file_size
+                    _LOGGER.debug("Deleted file: %s (size: %d bytes)", p.name, file_size)
                     # deleted -> not remaining
                 except FileNotFoundError:
                     # Race condition: file was already deleted
@@ -332,14 +340,15 @@ def _cleanup_folder(
         raise RuntimeError(f"Cleanup failed: {str(e)}") from e
 
     _LOGGER.debug(
-        "Cleanup complete for %s: deleted %d files, %d files remaining (%d older than retention)",
-        base_path, deleted, total_after, older_remaining
+        "Cleanup complete for %s: deleted %d files (%d bytes), %d files remaining (%d older than retention)",
+        base_path, deleted, deleted_bytes, total_after, older_remaining
     )
     return CleanupResult(
         deleted=deleted,
         total_after=total_after,
         older_remaining=older_remaining,
         path_available=True,
+        deleted_bytes=deleted_bytes,
     )
 
 
@@ -371,8 +380,11 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Visible runtime state for dashboard (separated!)
         self.deleted_last_run: int = 0
-        self.last_scan: str = "-"
-        self.last_cleanup: str = "-"
+        self.deleted_bytes_last_run: int = 0
+        self.last_scan: str | None = None
+        self.last_cleanup: str | None = None
+        self.last_scan_duration_ms: int = 0
+        self.last_cleanup_duration_ms: int = 0
 
         self._unsub_daily = None
 
@@ -525,6 +537,9 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Mark intent/time first so the dashboard shows something even if scan later fails
         self.last_cleanup = _now_iso()
 
+        # Measure cleanup duration
+        start_time = time.perf_counter()
+        
         try:
             # Use retry logic for cleanup operation
             result: CleanupResult = await _retry_async_operation(
@@ -547,8 +562,12 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("Cleanup failed for %s: %s", self.base_path, str(e))
             raise UpdateFailed(str(e)) from e
 
+        # Calculate and store cleanup duration
+        self.last_cleanup_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
         # Update visible state
         self.deleted_last_run = result.deleted
+        self.deleted_bytes_last_run = result.deleted_bytes
 
         # Refresh counts after cleanup
         await self.async_request_refresh()
@@ -579,6 +598,9 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Any refresh means: we updated the values
         self.last_scan = _now_iso()
 
+        # Measure scan duration
+        start_time = time.perf_counter()
+        
         try:
             # Use retry logic for scan operation
             result: ScanResult = await _retry_async_operation(
@@ -595,6 +617,9 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(str(e)) from e
         except Exception as e:
             raise UpdateFailed(str(e)) from e
+        
+        # Calculate and store scan duration
+        self.last_scan_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
         return {
             "base_path": self.base_path,
@@ -607,6 +632,9 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "total_files": result.total_files,
             "older_than_retention": result.older_than_retention,
             "deleted_last_run": self.deleted_last_run,
+            "deleted_bytes_last_run": self.deleted_bytes_last_run,
             "last_scan": self.last_scan,
             "last_cleanup": self.last_cleanup,
+            "last_scan_duration_ms": self.last_scan_duration_ms,
+            "last_cleanup_duration_ms": self.last_cleanup_duration_ms,
         }

@@ -17,6 +17,8 @@
     "error": {
       "base_path_not_media": "The base path must start with /media/.",
       "run_at_invalid": "Daily run time must be in HH:MM format.",
+      "pattern_too_broad": "This pattern matches ALL files! Please be more specific to avoid accidental data loss.",
+      "pattern_invalid_syntax": "Invalid glob pattern syntax. Check for unclosed brackets or invalid wildcards.",
       "unknown": "Invalid configuration."
     }
   }
