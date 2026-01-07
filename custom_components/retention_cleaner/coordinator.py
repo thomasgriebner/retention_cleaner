@@ -5,7 +5,7 @@ import errno
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, time as dt_time
+from datetime import datetime, timedelta, time as dt_time, timezone
 from pathlib import Path
 from typing import Any
 
@@ -67,16 +67,16 @@ class CleanupResult:
 
 
 def _now() -> datetime:
-    """Generate current timestamp.
+    """Generate current timestamp with UTC timezone.
 
     Returns:
-        datetime: Current datetime object.
+        datetime: Current datetime object with UTC timezone.
 
     Example:
         >>> _now()
-        datetime.datetime(2024, 1, 2, 15, 30, 45)
+        datetime.datetime(2024, 1, 2, 15, 30, 45, tzinfo=timezone.utc)
     """
-    return datetime.now()
+    return datetime.now(timezone.utc)
 
 
 async def _retry_async_operation(func, *args, max_retries: int = 3, delay: float = 0.5):
