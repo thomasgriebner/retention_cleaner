@@ -24,8 +24,8 @@ SENSOR_DEFS = [
     ("older_than_retention", "Older than retention", "files", "mdi:file-clock-outline", None, None, None),
     ("deleted_last_run", "Deleted last cleanup", "files", "mdi:delete-outline", None, None, None),
     ("deleted_bytes_last_run", "Deleted bytes last cleanup", UnitOfInformation.BYTES, "mdi:delete-circle-outline", None, SensorDeviceClass.DATA_SIZE, SensorStateClass.MEASUREMENT),
-    ("last_scan", "Last scan", None, "mdi:folder-search", EntityCategory.DIAGNOSTIC, None, None),
-    ("last_cleanup", "Last cleanup", None, "mdi:broom", EntityCategory.DIAGNOSTIC, None, None),
+    ("last_scan", "Last scan", None, "mdi:folder-search", EntityCategory.DIAGNOSTIC, SensorDeviceClass.TIMESTAMP, None),
+    ("last_cleanup", "Last cleanup", None, "mdi:broom", EntityCategory.DIAGNOSTIC, SensorDeviceClass.TIMESTAMP, None),
     ("last_scan_duration_ms", "Last scan duration", "ms", "mdi:timer-outline", EntityCategory.DIAGNOSTIC, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT),
     ("last_cleanup_duration_ms", "Last cleanup duration", "ms", "mdi:timer-check-outline", EntityCategory.DIAGNOSTIC, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT),
 ]

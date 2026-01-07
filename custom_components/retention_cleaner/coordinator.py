@@ -381,8 +381,8 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Visible runtime state for dashboard (separated!)
         self.deleted_last_run: int = 0
         self.deleted_bytes_last_run: int = 0
-        self.last_scan: str = "-"
-        self.last_cleanup: str = "-"
+        self.last_scan: str | None = None
+        self.last_cleanup: str | None = None
         self.last_scan_duration_ms: int = 0
         self.last_cleanup_duration_ms: int = 0
 
