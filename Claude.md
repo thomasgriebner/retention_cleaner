@@ -133,6 +133,24 @@ if deleted >= max_deletes:
 
 ---
 
+## Data Flow Contract (Scan vs Cleanup)
+
+To avoid confusing UI states, scan and cleanup must remain strictly separated:
+
+### Scan
+- Updates file counts (e.g., total, older_than_retention)
+- Updates `last_scan`
+- MUST NOT change `deleted_last_run`
+
+### Cleanup
+- Performs deletion (unless dry-run)
+- Updates counts after deletion
+- Updates `deleted_last_run` (and bytes if available)
+- Updates `last_cleanup`
+- Always writes a run summary (even if 0 files deleted)
+
+---
+
 ## Data Coordinator Pattern Compliance
 
 **NEVER** bypass Home Assistant's data coordinator pattern:
@@ -279,6 +297,12 @@ Is this a problem?
    - Use present tense ("add" not "added")
    - Keep commit body concise (2-3 lines max if needed)
    - Same applies to PR descriptions and changelog entries
+6. **Branch Policy**: Always check current branch - never commit directly to main/master
+7. **Repository Info**: This repository uses `main` as the default branch (not `master`)
+
+**HACS Default Repository PR Rule:**
+- Never open `hacs/default` PRs from your repository `main/master`
+- Always create a dedicated feature branch and open the PR from that branch
 
 **Example commit messages:**
 
@@ -459,6 +483,25 @@ SENSOR_DEFS = [
 
 ---
 
+## HACS Release Requirements
+
+**Before tagging a release, ALL of the following must be true:**
+
+### Release Gates (must pass)
+- ✅ HACS validation action passes with **no disabled/ignored checks**
+- ✅ `manifest.json` keys are ordered: `domain`, `name`, then alphabetical
+- ✅ No deprecated HA patterns (e.g. setting `self.config_entry = config_entry` in OptionsFlow)
+- ✅ Release tag version matches `manifest.json` version
+- ✅ If using CI/CD: `hassfest` passes with **no errors and no warnings** (Linux only)
+- ✅ If `async_setup` exists, define: `CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)`
+
+### Manifest Hygiene
+- Do not add unnecessary manifest keys
+- Avoid empty lists (e.g., `requirements: []`, `codeowners: []`)
+- Keep the manifest minimal and HA-compliant
+
+---
+
 ## Testing Requirements
 
 **BEFORE committing changes:**
@@ -495,6 +538,30 @@ SENSOR_DEFS = [
 - ❌ **DON'T**: Change entity unique IDs (breaks customizations)
 - ❌ **DON'T**: Remove config options without migration
 - ❌ **DON'T**: Break existing automations
+
+### New Feature Implementation Rules
+
+**All new features MUST:**
+- Be **optional** with sensible defaults (backwards compatible)
+- Be added to both **ConfigFlow** (initial setup) and **OptionsFlow** (reconfiguration)
+- Have **translations** in strings.json for all UI elements
+- Include **validation** in config_flow.py
+- Update **coordinator** logic to handle the new option
+- Consider **performance impact** on large folders (10k+ files)
+- Be tested with **existing configs** to ensure no breaking changes
+
+**Feature Interaction Guidelines:**
+- New features should work **independently** (no forced dependencies)
+- When features interact, clearly define **precedence rules**
+- Example: `keep_minimum_files` takes precedence over `max_files_in_folder`
+- Document interactions in code comments and CLAUDE.md
+
+**Performance Considerations for File Operations:**
+- **Cache** expensive calculations (folder size) between scans
+- Use single **stat()** call per file, store results
+- Consider **async/executor** pattern for heavy operations
+- Add **progress logging** for operations on large folders
+- Implement **early exit** conditions where possible
 
 ---
 
