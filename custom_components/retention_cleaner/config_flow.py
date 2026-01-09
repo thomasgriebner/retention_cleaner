@@ -91,12 +91,16 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
 
+                retention_days = int(
+                    user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
+                )
+                if retention_days < 0:
+                    raise vol.Invalid("retention_days_negative")
+
                 data = {
                     CONF_BASE_PATH: base_path,
                     CONF_PATTERN: pattern,
-                    CONF_RETENTION_DAYS: int(
-                        user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
-                    ),
+                    CONF_RETENTION_DAYS: retention_days,
                     CONF_RUN_AT: run_at,
                     CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
                     CONF_MAX_DELETES: int(
@@ -114,15 +118,16 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=title, data=data)
 
             except vol.Invalid as e:
-                # Map our validation codes to translation keys
+                # Map validation codes to correct field errors
                 error_key = str(e)
-                if error_key in (
-                    "base_path_not_media",
-                    "run_at_invalid",
-                    "pattern_too_broad",
-                    "pattern_invalid_syntax",
-                ):
-                    errors["base"] = error_key
+                if error_key == "base_path_not_media":
+                    errors[CONF_BASE_PATH] = error_key
+                elif error_key == "run_at_invalid":
+                    errors[CONF_RUN_AT] = error_key
+                elif error_key in ("pattern_too_broad", "pattern_invalid_syntax"):
+                    errors[CONF_PATTERN] = error_key
+                elif error_key == "retention_days_negative":
+                    errors[CONF_RETENTION_DAYS] = error_key
                 else:
                     _LOGGER.error("Unexpected validation error: %s", str(e))
                     errors["base"] = "unknown"
@@ -169,20 +174,24 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 )
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
 
+                retention_days = int(
+                    user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
+                )
+                if retention_days < 0:
+                    raise vol.Invalid("retention_days_negative")
+
                 _LOGGER.info(
                     "Updating config for path: %s (pattern: %s, retention: %d days)",
                     base_path,
                     pattern,
-                    int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
+                    retention_days,
                 )
                 return self.async_create_entry(
                     title="",
                     data={
                         CONF_BASE_PATH: base_path,
                         CONF_PATTERN: pattern,
-                        CONF_RETENTION_DAYS: int(
-                            user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
-                        ),
+                        CONF_RETENTION_DAYS: retention_days,
                         CONF_RUN_AT: run_at,
                         CONF_DRY_RUN: bool(
                             user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)
@@ -195,13 +204,14 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
 
             except vol.Invalid as e:
                 error_key = str(e)
-                if error_key in (
-                    "base_path_not_media",
-                    "run_at_invalid",
-                    "pattern_too_broad",
-                    "pattern_invalid_syntax",
-                ):
-                    errors["base"] = error_key
+                if error_key == "base_path_not_media":
+                    errors[CONF_BASE_PATH] = error_key
+                elif error_key == "run_at_invalid":
+                    errors[CONF_RUN_AT] = error_key
+                elif error_key in ("pattern_too_broad", "pattern_invalid_syntax"):
+                    errors[CONF_PATTERN] = error_key
+                elif error_key == "retention_days_negative":
+                    errors[CONF_RETENTION_DAYS] = error_key
                 else:
                     _LOGGER.error(
                         "Unexpected validation error in options flow: %s", str(e)

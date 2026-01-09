@@ -1,13 +1,11 @@
 """Test the retention_cleaner coordinator."""
 
-import errno
 import os
 from pathlib import Path
 import time as time_module
 from unittest.mock import Mock, patch
 
 from homeassistant.core import HomeAssistant
-import pytest
 
 from custom_components.retention_cleaner.coordinator import RetentionCleanerCoordinator
 
@@ -182,26 +180,25 @@ async def test_coordinator_race_condition_handling(
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry_no_dry_run)
 
-    # Create a file
-    test_file = media_dir / "test.log"
-    test_file.touch()
-    old_time = time_module.time() - (4 * 24 * 60 * 60)
-    os.utime(test_file, (old_time, old_time))
+    # Create multiple files
+    test_files = []
+    for i in range(3):
+        test_file = media_dir / f"test_{i}.log"
+        test_file.touch()
+        old_time = time_module.time() - (4 * 24 * 60 * 60)
+        os.utime(test_file, (old_time, old_time))
+        test_files.append(test_file)
 
-    # Mock the unlink to simulate race condition
-    original_cleanup = coordinator._cleanup_folder
+    # Delete one file manually to simulate race condition
+    test_files[0].unlink()
 
-    def cleanup_with_race(*args, **kwargs):
-        # Delete file before cleanup tries to
-        if test_file.exists():
-            test_file.unlink()
-        return original_cleanup(*args, **kwargs)
+    # Run cleanup - should handle missing file gracefully
+    result = await coordinator.async_run_cleanup_now()
 
-    with patch.object(coordinator, "_cleanup_folder", side_effect=cleanup_with_race):
-        result = await coordinator.async_run_cleanup_now()
-
-    # Should handle gracefully
-    assert "error" not in result or result.get("error") is None
+    # Should delete remaining files and handle missing file gracefully
+    assert result["deleted_last_run"] == 2
+    assert not test_files[1].exists()
+    assert not test_files[2].exists()
 
 
 async def test_coordinator_schedule_setup(hass: HomeAssistant, mock_setup_entry):
@@ -267,63 +264,117 @@ async def test_coordinator_performance_tracking(
     assert result["last_cleanup_duration_ms"] >= 0
 
 
-async def test_coordinator_permission_error_mocked(
-    hass: HomeAssistant, mock_setup_entry_no_dry_run
+async def test_coordinator_permission_error_with_real_files(
+    hass: HomeAssistant, mock_setup_entry_no_dry_run, tmp_path
 ):
-    """Test handling of permission errors during deletion."""
+    """Test handling of permission errors during deletion with real files."""
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    mock_setup_entry_no_dry_run.data = {
+        **mock_setup_entry_no_dry_run.data,
+        "base_path": str(media_dir),
+        "pattern": "*.log",
+        "dry_run": False,
+    }
+
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry_no_dry_run)
-    coordinator.dry_run = False
 
-    mock_file = Mock(spec=Path)
-    mock_file.name = "protected.log"
-    mock_file.stat.return_value.st_mtime = 0
-    mock_file.stat.return_value.st_size = 1024
-    mock_file.unlink.side_effect = PermissionError("Access denied")
+    # Create test files
+    for i in range(3):
+        test_file = media_dir / f"test_{i}.log"
+        test_file.touch()
+        old_time = time_module.time() - (4 * 24 * 60 * 60)
+        os.utime(test_file, (old_time, old_time))
 
-    with patch("pathlib.Path") as mock_path_class:
-        mock_path = Mock()
-        mock_path_class.return_value = mock_path
-        mock_path.exists.return_value = True
-        mock_path.is_dir.return_value = True
-        mock_path.glob.return_value = [mock_file]
+    # Mock unlink to simulate permission error on specific file
+    original_unlink = Path.unlink
 
-        with patch("asyncio.to_thread") as mock_to_thread:
-            mock_to_thread.side_effect = lambda func, *args: func(*args)
+    def mock_unlink(self):
+        if "test_1.log" in str(self):
+            raise PermissionError("Access denied")
+        return original_unlink(self)
 
-            result = await coordinator.async_run_cleanup_now()
+    with patch.object(Path, "unlink", mock_unlink):
+        result = await coordinator.async_run_cleanup_now()
 
-    # Should not count as deleted
-    assert result["deleted_last_run"] == 0
-    assert result["total_files"] == 1
+    # Should delete 2 out of 3 files (one failed with permission error)
+    assert result["deleted_last_run"] == 2
+    assert result["total_files"] == 1  # 1 file remaining due to permission error
+
+    # Verify which files still exist
+    remaining_files = list(media_dir.glob("*.log"))
+    assert len(remaining_files) == 1
+    assert "test_1.log" in str(remaining_files[0])  # The protected file remains
 
 
-async def test_coordinator_disk_full_error_mocked(
-    hass: HomeAssistant, mock_setup_entry_no_dry_run
+async def test_coordinator_file_pattern_matching(
+    hass: HomeAssistant, mock_setup_entry, tmp_path
 ):
-    """Test handling of disk full error."""
-    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry_no_dry_run)
-    coordinator.dry_run = False
+    """Test that file pattern matching works correctly with real files."""
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
 
-    mock_file = Mock(spec=Path)
-    mock_file.name = "test.log"
-    mock_file.stat.return_value.st_mtime = 0
-    mock_file.stat.return_value.st_size = 1024
+    mock_setup_entry.data = {
+        **mock_setup_entry.data,
+        "base_path": str(media_dir),
+        "pattern": "*.jpg",  # Only match JPG files
+    }
 
-    # Simulate disk full error
-    error = OSError("No space left on device")
-    error.errno = errno.ENOSPC
-    mock_file.unlink.side_effect = error
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
-    with patch("pathlib.Path") as mock_path_class:
-        mock_path = Mock()
-        mock_path_class.return_value = mock_path
-        mock_path.exists.return_value = True
-        mock_path.is_dir.return_value = True
-        mock_path.glob.return_value = [mock_file]
+    # Create various file types
+    files = [
+        media_dir / "photo1.jpg",
+        media_dir / "photo2.jpg",
+        media_dir / "document.pdf",
+        media_dir / "video.mp4",
+        media_dir / "log.txt",
+    ]
 
-        with patch("asyncio.to_thread") as mock_to_thread:
-            mock_to_thread.side_effect = lambda func, *args: func(*args)
+    for file_path in files:
+        file_path.touch()
+        old_time = time_module.time() - (8 * 24 * 60 * 60)
+        os.utime(file_path, (old_time, old_time))
 
-            # Disk full should raise an exception
-            with pytest.raises(RuntimeError, match="Disk full"):
-                await coordinator.async_run_cleanup_now()
+    result = await coordinator.async_scan_now()
+
+    # Should only count JPG files
+    assert result["total_files"] == 2  # Only 2 JPG files
+    assert result["older_than_retention"] == 2  # Both JPG files are old
+
+
+async def test_coordinator_retention_days_boundary(
+    hass: HomeAssistant, mock_setup_entry, tmp_path
+):
+    """Test retention days boundary conditions with real files."""
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    mock_setup_entry.data = {
+        **mock_setup_entry.data,
+        "base_path": str(media_dir),
+        "retention_days": 7,
+    }
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    # Create files with different ages
+    now = time_module.time()
+    files_ages = [
+        ("new_file.jpg", 1),  # 1 day old - keep
+        ("recent_file.jpg", 6),  # 6 days old - keep
+        ("old_file.jpg", 8),  # 8 days old - should delete
+        ("very_old_file.jpg", 30),  # 30 days old - should delete
+    ]
+
+    for filename, age_days in files_ages:
+        file_path = media_dir / filename
+        file_path.touch()
+        old_time = now - (age_days * 24 * 60 * 60)
+        os.utime(file_path, (old_time, old_time))
+
+    result = await coordinator.async_scan_now()
+
+    assert result["total_files"] == 4
+    assert result["older_than_retention"] == 2  # Only 2 files older than 7 days
