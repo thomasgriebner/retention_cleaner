@@ -67,7 +67,26 @@ with patch.object(coordinator, "_some_method") as mock_method:
 
 ### 5. Resource Cleanup (CRITICAL)
 **Always clean up timers and resources to prevent "lingering timer" errors:**
-- Call `coordinator.async_shutdown()` after DataUpdateCoordinator tests
+
+**CRITICAL HOME ASSISTANT COORDINATOR PATTERNS:**
+- **ALWAYS** call `await coordinator.async_shutdown()` in `finally` blocks for ANY test creating a coordinator
+- **NEVER** call `coordinator._debounced_refresh.cancel()` - Debouncer class doesn't have cancel() method
+- **USE** `async_refresh()` instead of `async_config_entry_first_refresh()` for manually created coordinators
+- **WRAP** coordinator tests in try/finally blocks with proper cleanup
+
+**Correct Pattern:**
+```python
+async def test_coordinator_something():
+    coordinator = MyCoordinator(hass, config_entry)
+    try:
+        await coordinator.async_refresh()  # NOT async_config_entry_first_refresh()
+        await hass.async_block_till_done()
+        # test logic here
+    finally:
+        await coordinator.async_shutdown()  # CRITICAL - prevents timer errors
+```
+
+**Integration Cleanup:**
 - Call `async_unload_entry()` for integration setup tests
 - Add cleanup even for successful tests
 - Use fixtures with proper teardown
@@ -98,7 +117,7 @@ Typical Home Assistant integration test structure:
 @pytest.fixture
 async def coordinator(hass, config_entry):
     coordinator = MyCoordinator(hass, config_entry)
-    await coordinator.async_config_entry_first_refresh()
+    await coordinator.async_refresh()  # NOT async_config_entry_first_refresh() for manual coordinators
     yield coordinator
     # CRITICAL: Always clean up
     await coordinator.async_shutdown()
@@ -159,7 +178,10 @@ async def test_entity_states(hass, init_integration):
 
 ### 1. "Lingering Timer" Errors
 **Cause**: DataUpdateCoordinator debouncer and scheduled timers not cleaned up
-**Solution**: Always implement proper cleanup in fixtures and tests
+**Solution**:
+- **ALWAYS** use `await coordinator.async_shutdown()` in finally blocks
+- **NEVER** try to cancel internal debouncer with `.cancel()` - it doesn't exist
+- **WRAP** all coordinator tests in try/finally blocks
 
 ### 2. Entity ID Naming Mismatches
 **Cause**: Tests using wrong entity naming patterns
@@ -232,10 +254,20 @@ Before marking tests complete:
 
 - **Over-mocking**: Don't mock Home Assistant framework or your integration logic
 - **Ignoring async timing**: Always wait for async operations
-- **Missing cleanup**: Always clean up timers and resources
+- **Missing cleanup**: Always clean up timers and resources with `await coordinator.async_shutdown()`
+- **Wrong coordinator methods**: Use `async_refresh()` not `async_config_entry_first_refresh()` for manual coordinators
+- **Debouncer manipulation**: NEVER call `coordinator._debounced_refresh.cancel()` - doesn't exist
 - **Wrong data types**: Match production code types exactly
 - **Incomplete error testing**: Test both success and failure paths
 - **Version assumptions**: Make tests work across HA versions
 - **Hardcoded values**: Use dynamic test data where possible
+
+## CRITICAL: DataUpdateCoordinator Testing Rules
+
+**ALWAYS REMEMBER:**
+1. Manual coordinators: Use `async_refresh()`
+2. Config entry coordinators: Use `async_config_entry_first_refresh()`
+3. ALL coordinators: Must call `await coordinator.async_shutdown()` in finally blocks
+4. NEVER manipulate internal `_debounced_refresh` - it's not part of the public API
 
 Your goal is to create comprehensive test suites that provide confidence in integration reliability, catch real bugs during development, and maintain compatibility across Home Assistant versions and Python environments.
