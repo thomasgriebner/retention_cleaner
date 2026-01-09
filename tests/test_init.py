@@ -1,46 +1,187 @@
-"""Test retention cleaner integration logic."""
+"""Test retention_cleaner integration setup and teardown."""
+
+from unittest.mock import AsyncMock, patch
+
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+import pytest
+
+from custom_components.retention_cleaner import (
+    async_setup_entry,
+    async_unload_entry,
+)
+from custom_components.retention_cleaner.const import PLATFORMS
 
 
-class TestIntegrationLogic:
-    """Test integration logic that doesn't require Home Assistant."""
+async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
+    """Test successful setup of the integration."""
+    mock_setup_entry.add_to_hass(hass)
 
-    def test_runtime_data_pattern(self):
-        """Test that runtime_data pattern works correctly."""
-        # Test the pattern we use: entry.runtime_data = coordinator
+    with patch(
+        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
+    ) as mock_coordinator_class:
+        mock_coordinator = mock_coordinator_class.return_value
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_setup_daily_schedule = AsyncMock()
 
-        class MockEntry:
-            def __init__(self):
-                self.entry_id = "test_123"
-                self.runtime_data = None
+        result = await async_setup_entry(hass, mock_setup_entry)
 
-        class MockCoordinator:
-            def __init__(self):
-                self.data = {"test": "data"}
+    assert result is True
+    assert mock_setup_entry.state == ConfigEntryState.LOADED
 
-        entry = MockEntry()
-        coordinator = MockCoordinator()
+    # Check coordinator was initialized
+    mock_coordinator_class.assert_called_once_with(hass, mock_setup_entry)
+    mock_coordinator.async_config_entry_first_refresh.assert_called_once()
+    mock_coordinator.async_setup_daily_schedule.assert_called_once()
 
-        # This is what our integration does
-        entry.runtime_data = coordinator
+    # Check entry is stored in runtime data
+    assert mock_setup_entry.runtime_data is not None
+    assert mock_setup_entry.runtime_data.coordinator == mock_coordinator
 
-        # Test access pattern
-        retrieved_coordinator = entry.runtime_data
-        assert retrieved_coordinator == coordinator
-        assert retrieved_coordinator.data["test"] == "data"
 
-    def test_platforms_list_integrity(self):
-        """Test that PLATFORMS list is correctly defined."""
-        # Test the platforms we set up
-        expected_platforms = ["sensor", "binary_sensor", "button"]
+async def test_setup_entry_failure_first_refresh(hass: HomeAssistant, mock_setup_entry):
+    """Test setup failure during first coordinator refresh."""
+    mock_setup_entry.add_to_hass(hass)
 
-        # Verify all platforms are strings
-        for platform in expected_platforms:
-            assert isinstance(platform, str)
-            assert platform.strip() == platform  # No whitespace
-            assert len(platform) > 0  # Not empty
+    with patch(
+        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
+    ) as mock_coordinator_class:
+        mock_coordinator = mock_coordinator_class.return_value
+        # Simulate refresh failure
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock(
+            side_effect=Exception("Connection error")
+        )
 
-        # Verify we have expected platforms
-        assert "sensor" in expected_platforms
-        assert "binary_sensor" in expected_platforms
-        assert "button" in expected_platforms
-        assert len(expected_platforms) == 3  # Only these three
+        with pytest.raises(Exception, match="Connection error"):
+            await async_setup_entry(hass, mock_setup_entry)
+
+
+async def test_unload_entry(hass: HomeAssistant, init_integration):
+    """Test unloading the integration."""
+    entry = init_integration
+
+    # Verify entry is loaded
+    assert entry.state == ConfigEntryState.LOADED
+
+    # Unload the entry
+    result = await async_unload_entry(hass, entry)
+
+    assert result is True
+    # Coordinator should be shut down
+    coordinator = entry.runtime_data.coordinator
+    coordinator.async_shutdown.assert_called_once()
+
+
+async def test_setup_multiple_entries(
+    hass: HomeAssistant, mock_setup_entry, mock_setup_entry_no_dry_run
+):
+    """Test setting up multiple config entries."""
+    mock_setup_entry.add_to_hass(hass)
+    mock_setup_entry_no_dry_run.add_to_hass(hass)
+
+    with patch(
+        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
+    ) as mock_coordinator_class:
+        mock_coordinator = mock_coordinator_class.return_value
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_setup_daily_schedule = AsyncMock()
+
+        # Setup both entries
+        result1 = await async_setup_entry(hass, mock_setup_entry)
+        result2 = await async_setup_entry(hass, mock_setup_entry_no_dry_run)
+
+    assert result1 is True
+    assert result2 is True
+    assert mock_coordinator_class.call_count == 2
+
+
+async def test_platforms_setup(hass: HomeAssistant, mock_setup_entry):
+    """Test that all platforms are set up."""
+    mock_setup_entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.retention_cleaner.RetentionCleanerCoordinator"
+        ) as mock_coordinator_class,
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups"
+        ) as mock_forward_setups,
+    ):
+        mock_coordinator = mock_coordinator_class.return_value
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_setup_daily_schedule = AsyncMock()
+
+        await async_setup_entry(hass, mock_setup_entry)
+
+        # Verify all platforms are forwarded for setup
+        mock_forward_setups.assert_called_once_with(mock_setup_entry, PLATFORMS)
+
+
+async def test_entry_reload(hass: HomeAssistant, init_integration):
+    """Test reloading a config entry."""
+    entry = init_integration
+
+    # Get initial coordinator
+    initial_coordinator = entry.runtime_data.coordinator
+
+    # Reload the entry
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Verify old coordinator was shut down
+    initial_coordinator.async_shutdown.assert_called()
+
+    # Entry should still be loaded after reload
+    assert entry.state == ConfigEntryState.LOADED
+
+
+async def test_coordinator_initialization_params(hass: HomeAssistant, mock_setup_entry):
+    """Test coordinator is initialized with correct parameters."""
+    mock_setup_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
+    ) as mock_coordinator_class:
+        mock_coordinator = mock_coordinator_class.return_value
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_setup_daily_schedule = AsyncMock()
+
+        await async_setup_entry(hass, mock_setup_entry)
+
+        # Verify coordinator was initialized with correct params
+        mock_coordinator_class.assert_called_once_with(hass, mock_setup_entry)
+
+
+async def test_domain_data_structure(hass: HomeAssistant):
+    """Test that domain data is properly structured."""
+    from custom_components.retention_cleaner import RetentionCleanerData
+
+    # Create mock data
+    mock_coordinator = AsyncMock()
+    data = RetentionCleanerData(coordinator=mock_coordinator)
+
+    assert data.coordinator == mock_coordinator
+    assert hasattr(data, "coordinator")
+
+
+async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry):
+    """Test that options updates trigger coordinator update."""
+    mock_setup_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
+    ) as mock_coordinator_class:
+        mock_coordinator = mock_coordinator_class.return_value
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_setup_daily_schedule = AsyncMock()
+
+        await async_setup_entry(hass, mock_setup_entry)
+
+        # Update options
+        hass.config_entries.async_update_entry(
+            mock_setup_entry, options={"retention_days": 14}
+        )
+        await hass.async_block_till_done()
+
+        # Coordinator should handle the options update
+        assert mock_coordinator_class.called

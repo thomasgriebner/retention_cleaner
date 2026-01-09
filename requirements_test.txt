@@ -1,0 +1,11 @@
+# Test dependencies for retention_cleaner
+# pytest-homeassistant-custom-component provides all HA testing fixtures
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-homeassistant-custom-component
+pytest-cov>=4.0.0
+pytest-timeout>=2.0.0
+pytest-xdist>=3.0.0
+freezegun>=1.2.0
+syrupy>=4.0.0
+respx>=0.20.0
