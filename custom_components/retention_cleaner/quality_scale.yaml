@@ -5,7 +5,7 @@ rules:
     comment: |
       No actions defined, only button entities for scan/cleanup
   appropriate-polling: done
-  brands: exempt
+  brands: done
   common-modules: done
   config-flow-test-coverage: todo
   config-flow: done
