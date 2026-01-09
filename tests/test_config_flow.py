@@ -8,6 +8,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
+import voluptuous as vol
 
 from custom_components.retention_cleaner.const import (
     CONF_BASE_PATH,
@@ -296,3 +297,232 @@ async def test_validation_functions_directly() -> None:
         _validate_run_at("25:00")
     with pytest.raises(vol.Invalid, match="run_at_invalid"):
         _validate_run_at("12:60")
+
+
+async def test_path_validation_with_os_error(hass: HomeAssistant) -> None:
+    """Test path validation handles OSError/ValueError during Path.resolve()."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Mock Path.resolve to raise OSError (covers lines 53-55)
+    with patch("pathlib.Path.resolve", side_effect=OSError("Mock error")):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",  # Valid prefix but resolve() fails
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+            },
+        )
+
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["errors"] == {CONF_BASE_PATH: "base_path_not_media"}
+
+
+async def test_time_validation_invalid_formats(hass: HomeAssistant) -> None:
+    """Test time validation with various invalid formats (covers lines 63-64)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Test invalid format "abc:def"
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.jpg",
+            CONF_RETENTION_DAYS: 7,
+            CONF_DRY_RUN: True,
+            CONF_MAX_DELETES: 100,
+            CONF_RUN_AT: "abc:def",  # Non-numeric format
+        },
+    )
+
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["errors"] == {CONF_RUN_AT: "run_at_invalid"}
+
+    # Test invalid format "1:2" (not HH:MM)
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.jpg",
+            CONF_RETENTION_DAYS: 7,
+            CONF_DRY_RUN: True,
+            CONF_MAX_DELETES: 100,
+            CONF_RUN_AT: "1:2",  # Single digit format
+        },
+    )
+
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"] == {CONF_RUN_AT: "run_at_invalid"}
+
+
+async def test_pattern_validation_unclosed_brackets(hass: HomeAssistant) -> None:
+    """Test pattern validation with unclosed brackets/braces (covers lines 89-90)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Test unclosed bracket
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "[abc",  # Unclosed bracket
+            CONF_RETENTION_DAYS: 7,
+            CONF_DRY_RUN: True,
+            CONF_MAX_DELETES: 100,
+            CONF_RUN_AT: "02:00",
+        },
+    )
+
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["errors"] == {CONF_PATTERN: "pattern_invalid_syntax"}
+
+    # Test unclosed brace
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "{xyz",  # Unclosed brace
+            CONF_RETENTION_DAYS: 7,
+            CONF_DRY_RUN: True,
+            CONF_MAX_DELETES: 100,
+            CONF_RUN_AT: "02:00",
+        },
+    )
+
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"] == {CONF_PATTERN: "pattern_invalid_syntax"}
+
+
+async def test_unexpected_validation_error(hass: HomeAssistant) -> None:
+    """Test config flow handles unexpected validation errors (covers lines 153-154)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Mock validation function to raise unexpected error
+    from custom_components.retention_cleaner import config_flow
+
+    def mock_validate_unexpected(value):
+        raise vol.Invalid("unexpected_error_code")
+
+    with patch.object(config_flow, "_validate_base_path", mock_validate_unexpected):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+            },
+        )
+
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["errors"] == {"base": "unknown"}
+
+
+async def test_options_flow_negative_retention_days(
+    hass: HomeAssistant, mock_setup_entry
+) -> None:
+    """Test options flow handles negative retention days (covers line 203)."""
+    mock_setup_entry.add_to_hass(hass)
+
+    # Start options flow
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+
+    # Configure with negative retention days
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.log",
+            CONF_RETENTION_DAYS: -5,  # Negative value
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "03:00",
+        },
+    )
+
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["errors"] == {CONF_RETENTION_DAYS: "retention_days_negative"}
+
+
+async def test_options_flow_error_handling(
+    hass: HomeAssistant, mock_setup_entry
+) -> None:
+    """Test options flow error handling for all validation types (covers lines 227-241)."""
+    mock_setup_entry.add_to_hass(hass)
+
+    # Test path validation error in options
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/home/user",  # Invalid path
+            CONF_PATTERN: "*.log",
+            CONF_RETENTION_DAYS: 14,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "03:00",
+        },
+    )
+    assert result2["errors"] == {CONF_BASE_PATH: "base_path_not_media"}
+
+    # Test time validation error in options
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.log",
+            CONF_RETENTION_DAYS: 14,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "25:99",  # Invalid time
+        },
+    )
+    assert result3["errors"] == {CONF_RUN_AT: "run_at_invalid"}
+
+    # Test pattern validation error in options
+    result4 = await hass.config_entries.options.async_configure(
+        result3["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*",  # Too broad pattern
+            CONF_RETENTION_DAYS: 14,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "03:00",
+        },
+    )
+    assert result4["errors"] == {CONF_PATTERN: "pattern_too_broad"}
+
+    # Test unexpected validation error in options flow
+    from custom_components.retention_cleaner import config_flow
+
+    def mock_validate_unexpected(value):
+        raise vol.Invalid("weird_unexpected_error")
+
+    with patch.object(config_flow, "_validate_pattern", mock_validate_unexpected):
+        result5 = await hass.config_entries.options.async_configure(
+            result4["flow_id"],
+            user_input={
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.log",
+                CONF_RETENTION_DAYS: 14,
+                CONF_DRY_RUN: False,
+                CONF_MAX_DELETES: 200,
+                CONF_RUN_AT: "03:00",
+            },
+        )
+
+    assert result5["type"] == FlowResultType.FORM
+    assert result5["errors"] == {"base": "unknown"}
