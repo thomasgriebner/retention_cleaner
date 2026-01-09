@@ -45,7 +45,7 @@ async def test_sensor_attributes(hass: HomeAssistant, init_integration):
 
 async def test_sensor_updates_from_coordinator(hass: HomeAssistant, init_integration):
     """Test that sensors update when coordinator data changes."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     coordinator.data = {
         "total_files": 100,
@@ -79,7 +79,7 @@ async def test_sensor_updates_from_coordinator(hass: HomeAssistant, init_integra
 
 async def test_performance_sensors(hass: HomeAssistant, init_integration):
     """Test performance tracking sensors."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     coordinator.data = {
         "last_scan_duration_ms": 150.5,
@@ -103,7 +103,7 @@ async def test_performance_sensors(hass: HomeAssistant, init_integration):
 
 async def test_sensor_availability(hass: HomeAssistant, init_integration):
     """Test sensor availability based on coordinator."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     state = hass.states.get("sensor.test_cleanup_total_files")
     assert state.state != "unavailable"
@@ -153,7 +153,7 @@ async def test_diagnostic_sensors(hass: HomeAssistant, init_integration):
 
 async def test_sensor_missing_data_handling(hass: HomeAssistant, init_integration):
     """Test sensors handle missing data gracefully."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     coordinator.data = {
         "total_files": 50,

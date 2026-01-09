@@ -34,7 +34,7 @@ async def test_button_attributes(hass: HomeAssistant, init_integration):
 
 async def test_scan_button_press(hass: HomeAssistant, init_integration):
     """Test pressing the scan button triggers a scan."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
     coordinator.async_scan_now = AsyncMock(
         return_value={
             "total_files": 50,
@@ -56,7 +56,7 @@ async def test_scan_button_press(hass: HomeAssistant, init_integration):
 
 async def test_cleanup_button_press(hass: HomeAssistant, init_integration):
     """Test pressing the cleanup button triggers a cleanup."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
     coordinator.async_run_cleanup_now = AsyncMock(
         return_value={
             "deleted_last_run": 5,
@@ -78,7 +78,7 @@ async def test_cleanup_button_press(hass: HomeAssistant, init_integration):
 
 async def test_button_availability(hass: HomeAssistant, init_integration):
     """Test button availability based on coordinator."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     scan_state = hass.states.get("button.test_cleanup_scan_now")
     assert scan_state.state != "unavailable"
@@ -152,7 +152,7 @@ async def test_button_unique_ids_stable(hass: HomeAssistant, init_integration):
 
 async def test_button_press_error_handling(hass: HomeAssistant, init_integration):
     """Test button press handles errors gracefully."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     coordinator.async_scan_now = AsyncMock(side_effect=Exception("Scan failed"))
 
@@ -177,7 +177,7 @@ async def test_button_press_error_handling(hass: HomeAssistant, init_integration
 
 async def test_multiple_button_presses(hass: HomeAssistant, init_integration):
     """Test multiple button presses work correctly."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
     coordinator.async_scan_now = AsyncMock(return_value={"total_files": 100})
     coordinator.async_run_cleanup_now = AsyncMock(return_value={"deleted_last_run": 5})
 

@@ -30,7 +30,7 @@ async def test_binary_sensor_attributes(hass: HomeAssistant, init_integration):
 
 async def test_binary_sensor_path_accessible(hass: HomeAssistant, init_integration):
     """Test binary sensor reflects path accessibility."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     coordinator.data = {
         "path_accessible": True,
@@ -53,7 +53,7 @@ async def test_binary_sensor_path_accessible(hass: HomeAssistant, init_integrati
 
 async def test_binary_sensor_availability(hass: HomeAssistant, init_integration):
     """Test binary sensor availability based on coordinator."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     state = hass.states.get("binary_sensor.test_cleanup_path_accessible")
     assert state.state != "unavailable"
@@ -99,7 +99,7 @@ async def test_binary_sensor_unique_id_stable(hass: HomeAssistant, init_integrat
 
 async def test_binary_sensor_missing_data(hass: HomeAssistant, init_integration):
     """Test binary sensor handles missing data gracefully."""
-    coordinator = init_integration.runtime_data.coordinator
+    coordinator = init_integration.runtime_data
 
     coordinator.data = {
         "total_files": 100,

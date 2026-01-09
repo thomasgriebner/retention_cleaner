@@ -7,10 +7,10 @@ from homeassistant.core import HomeAssistant
 import pytest
 
 from custom_components.retention_cleaner import (
+    PLATFORMS,
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.retention_cleaner.const import PLATFORMS
 
 
 async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
@@ -34,9 +34,9 @@ async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
     mock_coordinator.async_config_entry_first_refresh.assert_called_once()
     mock_coordinator.async_setup_daily_schedule.assert_called_once()
 
-    # Check entry is stored in runtime data
+    # Check coordinator is stored directly in runtime data
     assert mock_setup_entry.runtime_data is not None
-    assert mock_setup_entry.runtime_data.coordinator == mock_coordinator
+    assert mock_setup_entry.runtime_data == mock_coordinator
 
 
 async def test_setup_entry_failure_first_refresh(hass: HomeAssistant, mock_setup_entry):
@@ -68,7 +68,7 @@ async def test_unload_entry(hass: HomeAssistant, init_integration):
 
     assert result is True
     # Coordinator should be shut down
-    coordinator = entry.runtime_data.coordinator
+    coordinator = entry.runtime_data
     coordinator.async_shutdown.assert_called_once()
 
 
@@ -122,7 +122,7 @@ async def test_entry_reload(hass: HomeAssistant, init_integration):
     entry = init_integration
 
     # Get initial coordinator
-    initial_coordinator = entry.runtime_data.coordinator
+    initial_coordinator = entry.runtime_data
 
     # Reload the entry
     await hass.config_entries.async_reload(entry.entry_id)
@@ -152,16 +152,21 @@ async def test_coordinator_initialization_params(hass: HomeAssistant, mock_setup
         mock_coordinator_class.assert_called_once_with(hass, mock_setup_entry)
 
 
-async def test_domain_data_structure(hass: HomeAssistant):
-    """Test that domain data is properly structured."""
-    from custom_components.retention_cleaner import RetentionCleanerData
+async def test_runtime_data_structure(hass: HomeAssistant, mock_setup_entry):
+    """Test that runtime data is properly structured."""
+    # Runtime data should be the coordinator directly
+    with patch(
+        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
+    ) as mock_coordinator_class:
+        mock_coordinator = mock_coordinator_class.return_value
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_setup_daily_schedule = AsyncMock()
 
-    # Create mock data
-    mock_coordinator = AsyncMock()
-    data = RetentionCleanerData(coordinator=mock_coordinator)
+        mock_setup_entry.add_to_hass(hass)
+        await async_setup_entry(hass, mock_setup_entry)
 
-    assert data.coordinator == mock_coordinator
-    assert hasattr(data, "coordinator")
+        # Runtime data should be the coordinator itself
+        assert mock_setup_entry.runtime_data == mock_coordinator
 
 
 async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry):
