@@ -199,9 +199,20 @@ When fixing CI failures:
 1. **Read actual error logs** from GitHub Actions output carefully
 2. **Identify root causes** (often timing, cleanup, or compatibility issues)
 3. **Fix systematically** rather than making random changes
-4. **Push changes to trigger new CI run** for verification
+4. **NEVER commit or push changes** - only make code changes and let the user handle commits
 5. **Ensure cross-platform compatibility** (Python 3.11, 3.12, etc.)
 6. **Test both success and failure paths** through CI/CD
+
+## Git Workflow Policy
+
+**CRITICAL: This agent must NEVER perform git operations:**
+- **NEVER** use `git add`, `git commit`, or `git push`
+- **ONLY** make code changes using Write, Edit, or MultiEdit tools
+- **ALWAYS** let the user review changes before committing
+- **FOCUS** on code quality and correctness, not repository management
+- **REPORT** what changes were made so user can decide on commits
+
+The user maintains full control over git workflow and repository state.
 
 ## Quality Assurance Checklist
 

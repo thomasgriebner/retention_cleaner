@@ -16,14 +16,17 @@ async def test_coordinator_setup(hass: HomeAssistant, mock_setup_entry):
     """Test coordinator initialization."""
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
-    assert coordinator.base_path == "/media/test"
-    assert coordinator.pattern == "*.jpg"
-    assert coordinator.retention_days == 7
-    assert coordinator.dry_run is True
-    assert coordinator.max_deletes == 100
-    assert str(coordinator.run_at) == "02:00:00"  # run_at returns a time object
-    # coordinator.name is set by parent DataUpdateCoordinator
-    assert coordinator.name == f"retention_cleaner_{mock_setup_entry.entry_id}"
+    try:
+        assert coordinator.base_path == "/media/test"
+        assert coordinator.pattern == "*.jpg"
+        assert coordinator.retention_days == 7
+        assert coordinator.dry_run is True
+        assert coordinator.max_deletes == 100
+        assert str(coordinator.run_at) == "02:00:00"  # run_at returns a time object
+        # coordinator.name is set by parent DataUpdateCoordinator
+        assert coordinator.name == f"retention_cleaner_{mock_setup_entry.entry_id}"
+    finally:
+        await coordinator.async_shutdown()
 
 
 async def test_coordinator_scan_with_real_files(
@@ -260,11 +263,14 @@ async def test_coordinator_path_not_accessible(hass: HomeAssistant, mock_setup_e
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
-    result = await coordinator._async_update_data()
+    try:
+        result = await coordinator._async_update_data()
 
-    assert result["path_available"] is False
-    assert result["total_files"] == 0
-    assert result["older_than_retention"] == 0
+        assert result["path_available"] is False
+        assert result["total_files"] == 0
+        assert result["older_than_retention"] == 0
+    finally:
+        await coordinator.async_shutdown()
 
 
 async def test_coordinator_race_condition_handling(
@@ -359,15 +365,18 @@ async def test_coordinator_unload(hass: HomeAssistant, mock_setup_entry):
     """Test coordinator cleanup on unload."""
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
-    # Set up a mock schedule listener
-    mock_unsub = Mock()
-    coordinator._unsub_daily = mock_unsub
+    try:
+        # Set up a mock schedule listener
+        mock_unsub = Mock()
+        coordinator._unsub_daily = mock_unsub
 
-    coordinator.async_remove_listeners()
+        coordinator.async_remove_listeners()
 
-    # Verify listener was removed
-    mock_unsub.assert_called_once()
-    assert coordinator._unsub_daily is None
+        # Verify listener was removed
+        mock_unsub.assert_called_once()
+        assert coordinator._unsub_daily is None
+    finally:
+        await coordinator.async_shutdown()
 
 
 async def test_coordinator_performance_tracking(

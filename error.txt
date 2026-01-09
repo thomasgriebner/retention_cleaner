@@ -1,27 +1,28 @@
-Required test coverage of 80% reached. Total coverage: 86.03%
 =========================== short test summary info ============================
-ERROR tests/test_coordinator.py::test_coordinator_scan_with_real_files - Failed: Lingering timer after test <TimerHandle when=216.661257337 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_cleanup_dry_run_real_files - Failed: Lingering timer after test <TimerHandle when=216.716838835 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_cleanup_with_deletion_real_files - Failed: Lingering timer after test <TimerHandle when=216.773158466 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_max_deletes_limit_real_files - Failed: Lingering timer after test <TimerHandle when=216.828965909 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_race_condition_handling - Failed: Lingering timer after test <TimerHandle when=216.89987286 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_performance_tracking - Failed: Lingering timer after test <TimerHandle when=216.987242377 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_permission_error_with_real_files - Failed: Lingering timer after test <TimerHandle when=217.042697347 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_file_pattern_matching - Failed: Lingering timer after test <TimerHandle when=217.094852591 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_coordinator_retention_days_boundary - Failed: Lingering timer after test <TimerHandle when=217.148161098 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_concurrent_scan_and_cleanup - Failed: Lingering timer after test <TimerHandle when=217.502344004 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_multiple_coordinator_instances - Failed: Lingering timer after test <TimerHandle when=217.586540211 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-ERROR tests/test_coordinator.py::test_large_directory_performance - Failed: Lingering timer after test <TimerHandle when=217.812490778 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
-FAILED tests/test_coordinator.py::test_daily_schedule_end_to_end - AssertionError: assert 0 == 3
- +  where 0 = <built-in method get of dict object at 0x7f11a95c61c0>('deleted_last_run', 0)
- +    where <built-in method get of dict object at 0x7f11a95c61c0> = {'base_path': '/tmp/pytest-of-runner/pytest-0/test_daily_schedule_end_to_end0/media/scheduled_test', 'deleted_bytes_last_run': 0, 'deleted_last_run': 0, 'dry_run': False, ...}.get
-FAILED tests/test_coordinator.py::test_pattern_safety_comprehensive - AssertionError: Pattern **/*[*: expected 0, got 1
-assert 1 == 0
- +  where 1 = ScanResult(total_files=1, older_than_retention=1, path_available=True).total_files
-FAILED tests/test_coordinator.py::test_concurrent_scan_and_cleanup - AssertionError: assert 0 == 20
- +  where 0 = <built-in method get of dict object at 0x7f11a62f0940>('deleted_last_run', 0)
- +    where <built-in method get of dict object at 0x7f11a62f0940> = {'base_path': '/tmp/pytest-of-runner/pytest-0/test_concurrent_scan_and_clean0/media/concurrent_test', 'deleted_bytes_last_run': 0, 'deleted_last_run': 0, 'dry_run': False, ...}.get
-FAILED tests/test_coordinator.py::test_large_directory_performance - AssertionError: assert 0 == 900
- +  where 0 = <built-in method get of dict object at 0x7f11a62dee80>('deleted_last_run', 0)
- +    where <built-in method get of dict object at 0x7f11a62dee80> = {'base_path': '/tmp/pytest-of-runner/pytest-0/test_large_directory_performan0/media/performance_test', 'deleted_bytes_last_run': 0, 'deleted_last_run': 0, 'dry_run': False, ...}.get
-=================== 4 failed, 66 passed, 12 errors in 4.64s ====================
+ERROR tests/test_coordinator.py::test_coordinator_scan_with_real_files - Failed: Lingering timer after test <TimerHandle when=100.936364116 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_cleanup_dry_run_real_files - Failed: Lingering timer after test <TimerHandle when=101.037519767 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_cleanup_with_deletion_real_files - Failed: Lingering timer after test <TimerHandle when=101.132264024 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_max_deletes_limit_real_files - Failed: Lingering timer after test <TimerHandle when=101.227479128 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_race_condition_handling - Failed: Lingering timer after test <TimerHandle when=101.340357726 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_performance_tracking - Failed: Lingering timer after test <TimerHandle when=101.507918833 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_permission_error_with_real_files - Failed: Lingering timer after test <TimerHandle when=101.608870363 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_file_pattern_matching - Failed: Lingering timer after test <TimerHandle when=101.704143255 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_coordinator_retention_days_boundary - Failed: Lingering timer after test <TimerHandle when=101.797024731 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_coordinator.py::test_multiple_coordinator_instances - Failed: Lingering timer after test <TimerHandle when=102.308632545 Debouncer._on_debounce() created at /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/site-packages/homeassistant/helpers/debounce.py:180>
+ERROR tests/test_init.py::test_entry_reload - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_scan_with_real_files - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_cleanup_dry_run_real_files - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_cleanup_with_deletion_real_files - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_max_deletes_limit_real_files - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_race_condition_handling - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_schedule_setup - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_performance_tracking - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_permission_error_with_real_files - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_file_pattern_matching - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_coordinator_retention_days_boundary - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_daily_schedule_end_to_end - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_disk_full_during_cleanup - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_readonly_filesystem_handling - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_concurrent_scan_and_cleanup - AttributeError: 'Debouncer' object has no attribute 'cancel'
+FAILED tests/test_coordinator.py::test_large_directory_performance - AttributeError: 'Debouncer' object has no attribute 'cancel'
+=================== 15 failed, 55 passed, 11 errors in 5.40s ===================
