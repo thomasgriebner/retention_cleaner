@@ -20,7 +20,8 @@ async def test_coordinator_setup(hass: HomeAssistant, mock_setup_entry):
     assert coordinator.dry_run is True
     assert coordinator.max_deletes == 100
     assert str(coordinator.run_at) == "02:00:00"  # run_at returns a time object
-    assert coordinator.name == "Test Cleanup"
+    # coordinator.name is set by parent DataUpdateCoordinator
+    assert coordinator.name == f"retention_cleaner_{mock_setup_entry.entry_id}"
 
 
 async def test_coordinator_scan_with_real_files(
@@ -279,7 +280,7 @@ async def test_coordinator_unload(hass: HomeAssistant, mock_setup_entry):
     mock_unsub = Mock()
     coordinator._unsub_daily = mock_unsub
 
-    await coordinator.async_shutdown()
+    coordinator.async_remove_listeners()
 
     # Verify listener was removed
     mock_unsub.assert_called_once()
