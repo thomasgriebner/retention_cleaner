@@ -128,15 +128,17 @@ def mock_file_system_operations():
 @pytest.fixture
 def mock_coordinator_data():
     """Mock coordinator data for entity tests."""
+    from datetime import UTC, datetime
+
     return {
         "total_files": 100,
         "older_than_retention": 25,
         "deleted_last_run": 10,
         "deleted_bytes_last_run": 102400,
-        "last_scan": "2024-01-01T12:00:00",
-        "last_cleanup": "2024-01-01T02:00:00",
-        "last_scan_duration_ms": 150.5,
-        "last_cleanup_duration_ms": 500.2,
+        "last_scan": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+        "last_cleanup": datetime(2024, 1, 1, 2, 0, 0, tzinfo=UTC),
+        "last_scan_duration_ms": 150,  # int milliseconds
+        "last_cleanup_duration_ms": 500,  # int milliseconds
         "path_available": True,
     }
 

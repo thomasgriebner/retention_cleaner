@@ -175,7 +175,7 @@ async def test_sensor_missing_data_handling(hass: HomeAssistant, init_integratio
     assert state.state in ["0", "unknown"]  # Should have safe default
 
     state = hass.states.get("sensor.test_cleanup_last_scan")
-    assert state.state in ["unknown", ""]  # No timestamp available
+    assert state.state == "unknown"  # No timestamp available, returns None -> "unknown"
 
 
 async def test_sensor_unique_ids_stable(hass: HomeAssistant, init_integration):

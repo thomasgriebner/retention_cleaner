@@ -262,6 +262,8 @@ async def test_coordinator_schedule_setup(hass: HomeAssistant, mock_setup_entry)
     with patch(
         "custom_components.retention_cleaner.coordinator.async_track_time_change"
     ) as mock_track:
+        # async_track_time_change returns an unsubscribe callable
+        mock_track.return_value = Mock()
         await coordinator.async_setup_daily_schedule()
 
         # Verify schedule was set up for 02:00
