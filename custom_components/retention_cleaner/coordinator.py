@@ -554,7 +554,14 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         _LOGGER.debug("Shutting down coordinator for %s", self.base_path)
         self.async_remove_listeners()
-        # Additional cleanup can be added here if needed in the future
+
+        # Cancel any pending debounced refresh from DataUpdateCoordinator
+        if hasattr(self, "_debounced_refresh") and self._debounced_refresh:
+            self._debounced_refresh.cancel()
+
+        # Call parent shutdown if available
+        if hasattr(super(), "async_shutdown"):
+            await super().async_shutdown()
 
     async def async_run_scan_now(self) -> None:
         """Manually trigger a scan operation.
