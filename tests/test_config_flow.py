@@ -185,6 +185,7 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
     result2 = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
+            CONF_BASE_PATH: "/media/test",  # Must include base_path since it's required
             CONF_PATTERN: "*.log",
             CONF_RETENTION_DAYS: 14,
             CONF_DRY_RUN: False,
@@ -195,6 +196,7 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
 
     assert result2["type"] == FlowResultType.CREATE_ENTRY
     assert result2["data"] == {
+        CONF_BASE_PATH: "/media/test",
         CONF_PATTERN: "*.log",
         CONF_RETENTION_DAYS: 14,
         CONF_DRY_RUN: False,

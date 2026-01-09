@@ -30,10 +30,18 @@ async def test_coordinator_scan_with_real_files(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry.data = {
-        **mock_setup_entry.data,
-        "base_path": str(media_dir),
-    }
+    # Create new config entry with updated path instead of modifying data directly
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+        },
+        entry_id="test_entry_123",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
@@ -62,11 +70,18 @@ async def test_coordinator_cleanup_dry_run_real_files(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry.data = {
-        **mock_setup_entry.data,
-        "base_path": str(media_dir),
-        "dry_run": True,
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+            "dry_run": True,
+        },
+        entry_id="test_entry_123",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
@@ -92,12 +107,19 @@ async def test_coordinator_cleanup_with_deletion_real_files(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry_no_dry_run.data = {
-        **mock_setup_entry_no_dry_run.data,
-        "base_path": str(media_dir),
-        "pattern": "*.log",
-        "dry_run": False,
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry_no_dry_run = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup No Dry Run",
+        data={
+            **mock_setup_entry_no_dry_run.data,
+            "base_path": str(media_dir),
+            "pattern": "*.log",
+            "dry_run": False,
+        },
+        entry_id="test_entry_456",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry_no_dry_run)
 
@@ -124,13 +146,20 @@ async def test_coordinator_max_deletes_limit_real_files(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry_no_dry_run.data = {
-        **mock_setup_entry_no_dry_run.data,
-        "base_path": str(media_dir),
-        "pattern": "*.log",
-        "dry_run": False,
-        "max_deletes": 3,  # Limit to 3 deletions
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry_no_dry_run = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup No Dry Run",
+        data={
+            **mock_setup_entry_no_dry_run.data,
+            "base_path": str(media_dir),
+            "pattern": "*.log",
+            "dry_run": False,
+            "max_deletes": 3,
+        },
+        entry_id="test_entry_456",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry_no_dry_run)
 
@@ -150,10 +179,17 @@ async def test_coordinator_max_deletes_limit_real_files(
 
 async def test_coordinator_path_not_accessible(hass: HomeAssistant, mock_setup_entry):
     """Test behavior when path doesn't exist."""
-    mock_setup_entry.data = {
-        **mock_setup_entry.data,
-        "base_path": "/media/nonexistent/path",
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": "/media/nonexistent/path",
+        },
+        entry_id="test_entry_123",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
@@ -171,12 +207,19 @@ async def test_coordinator_race_condition_handling(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry_no_dry_run.data = {
-        **mock_setup_entry_no_dry_run.data,
-        "base_path": str(media_dir),
-        "pattern": "*.log",
-        "dry_run": False,
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry_no_dry_run = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup No Dry Run",
+        data={
+            **mock_setup_entry_no_dry_run.data,
+            "base_path": str(media_dir),
+            "pattern": "*.log",
+            "dry_run": False,
+        },
+        entry_id="test_entry_456",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry_no_dry_run)
 
@@ -240,10 +283,17 @@ async def test_coordinator_performance_tracking(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry.data = {
-        **mock_setup_entry.data,
-        "base_path": str(media_dir),
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+        },
+        entry_id="test_entry_123",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
@@ -271,12 +321,19 @@ async def test_coordinator_permission_error_with_real_files(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry_no_dry_run.data = {
-        **mock_setup_entry_no_dry_run.data,
-        "base_path": str(media_dir),
-        "pattern": "*.log",
-        "dry_run": False,
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry_no_dry_run = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup No Dry Run",
+        data={
+            **mock_setup_entry_no_dry_run.data,
+            "base_path": str(media_dir),
+            "pattern": "*.log",
+            "dry_run": False,
+        },
+        entry_id="test_entry_456",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry_no_dry_run)
 
@@ -315,11 +372,18 @@ async def test_coordinator_file_pattern_matching(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry.data = {
-        **mock_setup_entry.data,
-        "base_path": str(media_dir),
-        "pattern": "*.jpg",  # Only match JPG files
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",  # Only match JPG files
+        },
+        entry_id="test_entry_123",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
@@ -351,11 +415,18 @@ async def test_coordinator_retention_days_boundary(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    mock_setup_entry.data = {
-        **mock_setup_entry.data,
-        "base_path": str(media_dir),
-        "retention_days": 7,
-    }
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+            "retention_days": 7,
+        },
+        entry_id="test_entry_123",
+    )
 
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
