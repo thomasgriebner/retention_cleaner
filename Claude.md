@@ -462,7 +462,11 @@ Is this a problem?
    - Use present tense ("add" not "added")
    - Keep commit body concise (2-3 lines max if needed)
    - Same applies to PR descriptions and changelog entries
-6. **Branch Policy**: Always check current branch - never commit directly to main/master
+6. **Branch Policy**: 
+   - Always check current branch before making changes
+   - Never commit directly to main/master
+   - If already on a feature branch, continue using it unless explicitly told to create a new branch
+   - Only create new branches when starting completely new features or when explicitly requested
 7. **Repository Info**: This repository uses `main` as the default branch (not `master`)
 
 **HACS Default Repository PR Rule:**
