@@ -1,0 +1,65 @@
+name: Code Quality
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  ruff:
+    name: Ruff (Linting & Formatting)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff Linter
+        run: ruff check .
+
+      - name: Run Ruff Formatter
+        run: ruff format --check .
+
+  pytest:
+    name: Tests
+    runs-on: ubuntu-latest
+    if: false # Disabled until tests are implemented
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-homeassistant-custom-component
+          pip install -r requirements_dev.txt
+
+      - name: Run tests
+        run: pytest
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [ruff]
+    if: always()
+    steps:
+      - name: Check Quality Gate
+        run: |
+          if [[ "${{ needs.ruff.result }}" == "failure" ]]; then
+            echo "❌ Code quality checks failed"
+            exit 1
+          else
+            echo "✅ Code quality checks passed"
+          fi

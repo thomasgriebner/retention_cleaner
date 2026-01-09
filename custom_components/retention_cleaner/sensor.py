@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import (
-    SensorEntity,
     EntityCategory,
     SensorDeviceClass,
+    SensorEntity,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -18,16 +18,71 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import RetentionCleanerCoordinator
 
-
 SENSOR_DEFS = [
     ("total_files", "Total files", "files", "mdi:file-multiple", None, None, None),
-    ("older_than_retention", "Older than retention", "files", "mdi:file-clock-outline", None, None, None),
-    ("deleted_last_run", "Deleted last cleanup", "files", "mdi:delete-outline", None, None, None),
-    ("deleted_bytes_last_run", "Deleted bytes last cleanup", UnitOfInformation.BYTES, "mdi:delete-circle-outline", None, SensorDeviceClass.DATA_SIZE, SensorStateClass.MEASUREMENT),
-    ("last_scan", "Last scan", None, "mdi:folder-search", EntityCategory.DIAGNOSTIC, SensorDeviceClass.TIMESTAMP, None),
-    ("last_cleanup", "Last cleanup", None, "mdi:broom", EntityCategory.DIAGNOSTIC, SensorDeviceClass.TIMESTAMP, None),
-    ("last_scan_duration_ms", "Last scan duration", "ms", "mdi:timer-outline", EntityCategory.DIAGNOSTIC, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT),
-    ("last_cleanup_duration_ms", "Last cleanup duration", "ms", "mdi:timer-check-outline", EntityCategory.DIAGNOSTIC, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT),
+    (
+        "older_than_retention",
+        "Older than retention",
+        "files",
+        "mdi:file-clock-outline",
+        None,
+        None,
+        None,
+    ),
+    (
+        "deleted_last_run",
+        "Deleted last cleanup",
+        "files",
+        "mdi:delete-outline",
+        None,
+        None,
+        None,
+    ),
+    (
+        "deleted_bytes_last_run",
+        "Deleted bytes last cleanup",
+        UnitOfInformation.BYTES,
+        "mdi:delete-circle-outline",
+        None,
+        SensorDeviceClass.DATA_SIZE,
+        SensorStateClass.MEASUREMENT,
+    ),
+    (
+        "last_scan",
+        "Last scan",
+        None,
+        "mdi:folder-search",
+        EntityCategory.DIAGNOSTIC,
+        SensorDeviceClass.TIMESTAMP,
+        None,
+    ),
+    (
+        "last_cleanup",
+        "Last cleanup",
+        None,
+        "mdi:broom",
+        EntityCategory.DIAGNOSTIC,
+        SensorDeviceClass.TIMESTAMP,
+        None,
+    ),
+    (
+        "last_scan_duration_ms",
+        "Last scan duration",
+        "ms",
+        "mdi:timer-outline",
+        EntityCategory.DIAGNOSTIC,
+        SensorDeviceClass.DURATION,
+        SensorStateClass.MEASUREMENT,
+    ),
+    (
+        "last_cleanup_duration_ms",
+        "Last cleanup duration",
+        "ms",
+        "mdi:timer-check-outline",
+        EntityCategory.DIAGNOSTIC,
+        SensorDeviceClass.DURATION,
+        SensorStateClass.MEASUREMENT,
+    ),
 ]
 
 
@@ -39,13 +94,25 @@ async def async_setup_entry(
     coordinator: RetentionCleanerCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [
-            RetentionCleanerSensor(coordinator, entry, key, name, unit, icon, category, device_class, state_class)
+            RetentionCleanerSensor(
+                coordinator,
+                entry,
+                key,
+                name,
+                unit,
+                icon,
+                category,
+                device_class,
+                state_class,
+            )
             for key, name, unit, icon, category, device_class, state_class in SENSOR_DEFS
         ]
     )
 
 
-class RetentionCleanerSensor(CoordinatorEntity[RetentionCleanerCoordinator], SensorEntity):
+class RetentionCleanerSensor(
+    CoordinatorEntity[RetentionCleanerCoordinator], SensorEntity
+):
     def __init__(
         self,
         coordinator: RetentionCleanerCoordinator,
@@ -68,13 +135,13 @@ class RetentionCleanerSensor(CoordinatorEntity[RetentionCleanerCoordinator], Sen
         self._attr_name = f"{title} {name}"
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
-        
+
         if category:
             self._attr_entity_category = category
-        
+
         if device_class:
             self._attr_device_class = device_class
-        
+
         if state_class:
             self._attr_state_class = state_class
 

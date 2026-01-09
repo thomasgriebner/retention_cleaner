@@ -1,0 +1,102 @@
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: |
+      No actions defined, only button entities for scan/cleanup
+  appropriate-polling: done
+  brands: done
+  common-modules: done
+  config-flow-test-coverage: todo
+  config-flow: done
+  dependency-transparency: done
+  docs-actions:
+    status: done
+    comment: |
+      Button entities for scan and cleanup are documented
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: todo
+  test-before-setup: todo
+  unique-config-entry: done
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: |
+      No actions defined, button entities handle exceptions properly
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner:
+    status: todo
+    comment: |
+      Check if single maintainer counts as done
+  log-when-unavailable: done
+  parallel-updates:
+    status: done
+    comment: |
+      DataUpdateCoordinator handles updates, file operations use asyncio.to_thread
+  reauthentication-flow:
+    status: exempt
+    comment: |
+      Not applicable - local file system access only
+  test-coverage: todo
+  # Gold
+  devices: done
+  diagnostics: todo
+  discovery-update-info:
+    status: exempt
+    comment: |
+      No discovery mechanism - manual configuration only
+  discovery:
+    status: exempt
+    comment: |
+      No discovery mechanism - manual configuration only
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices:
+    status: exempt
+    comment: |
+      Not a device integration - file system operations
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: todo
+    comment: |
+      Check if virtual device creation counts as dynamic devices
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default:
+    status: done
+    comment: |
+      Performance sensors are disabled by default
+  entity-translations: done
+  exception-translations: done
+  icon-translations:
+    status: exempt
+    comment: |
+      Using standard MDI icons
+  reconfiguration-flow: done
+  repair-issues: todo
+  stale-devices:
+    status: exempt
+    comment: |
+      Virtual devices removed when config entry removed
+  # Platinum
+  async-dependency:
+    status: exempt
+    comment: |
+      No external dependencies
+  inject-websession:
+    status: exempt
+    comment: |
+      No web sessions used - local file operations only
+  strict-typing: todo
