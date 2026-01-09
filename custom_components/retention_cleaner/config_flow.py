@@ -29,10 +29,31 @@ TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 
 def _validate_base_path(value: str) -> str:
     value = (value or "").strip()
-    # Safety guard for MVP: only allow /media paths
+
+    # Basic check: must start with /media/
     if not value.startswith("/media/"):
         _LOGGER.warning("Invalid base path provided (not under /media/): %s", value)
         raise vol.Invalid("base_path_not_media")
+
+    # Security check: resolve path to prevent traversal attacks
+    from pathlib import Path
+
+    try:
+        # Resolve the path to normalize it and follow any .. components
+        resolved_path = str(Path(value).resolve())
+
+        # After resolution, the path must still be under /media/
+        if not resolved_path.startswith("/media/"):
+            _LOGGER.warning(
+                "Path traversal attempt detected: %s resolves to %s",
+                value,
+                resolved_path,
+            )
+            raise vol.Invalid("base_path_not_media")
+    except (OSError, ValueError) as e:
+        _LOGGER.warning("Invalid path provided: %s (%s)", value, e)
+        raise vol.Invalid("base_path_not_media") from e
+
     return value.rstrip("/")
 
 

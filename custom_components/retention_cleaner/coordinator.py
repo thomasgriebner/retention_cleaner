@@ -546,6 +546,16 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._unsub_daily()
             self._unsub_daily = None
 
+    async def async_shutdown(self) -> None:
+        """Shutdown the coordinator and clean up resources.
+
+        This method should be called when the coordinator is no longer needed
+        to prevent lingering timers and clean up resources properly.
+        """
+        _LOGGER.debug("Shutting down coordinator for %s", self.base_path)
+        self.async_remove_listeners()
+        # Additional cleanup can be added here if needed in the future
+
     async def async_run_scan_now(self) -> None:
         """Manually trigger a scan operation.
 
