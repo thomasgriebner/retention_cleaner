@@ -111,7 +111,12 @@ async def test_button_device_info(hass: HomeAssistant, init_integration):
     assert cleanup_entry.device_id == scan_entry.device_id  # Same device
 
     # Verify device info
-    device_registry = hass.helpers.device_registry.async_get()
+    # Handle HA version differences in device_registry API
+    try:
+        device_registry = hass.helpers.device_registry.async_get()
+    except TypeError:
+        # Older HA versions need hass parameter
+        device_registry = hass.helpers.device_registry.async_get(hass)
     device = device_registry.async_get_device(
         identifiers={(DOMAIN, init_integration.entry_id)}
     )
