@@ -57,6 +57,7 @@ async def test_coordinator_scan_with_real_files(
     (media_dir / "other.png").touch()
 
     await coordinator.async_run_scan_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     assert result["total_files"] == 10  # Only .jpg files
@@ -95,6 +96,7 @@ async def test_coordinator_cleanup_dry_run_real_files(
         test_files.append(file)
 
     await coordinator.async_run_cleanup_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     assert result["deleted_last_run"] == 0
@@ -134,6 +136,7 @@ async def test_coordinator_cleanup_with_deletion_real_files(
         test_files.append(file)
 
     await coordinator.async_run_cleanup_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     assert result["deleted_last_run"] == 5
@@ -173,6 +176,7 @@ async def test_coordinator_max_deletes_limit_real_files(
         os.utime(file, (old_time, old_time))
 
     await coordinator.async_run_cleanup_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     assert result["deleted_last_run"] == 3
@@ -241,6 +245,7 @@ async def test_coordinator_race_condition_handling(
 
     # Run cleanup - should handle missing file gracefully
     await coordinator.async_run_cleanup_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     # Should delete remaining files and handle missing file gracefully
@@ -308,6 +313,7 @@ async def test_coordinator_performance_tracking(
 
     # Test scan duration tracking
     await coordinator.async_run_scan_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
     assert "last_scan_duration_ms" in result
     assert isinstance(result["last_scan_duration_ms"], int)
@@ -315,6 +321,7 @@ async def test_coordinator_performance_tracking(
 
     # Test cleanup duration tracking
     await coordinator.async_run_cleanup_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
     assert "last_cleanup_duration_ms" in result
     assert isinstance(result["last_cleanup_duration_ms"], int)
@@ -361,6 +368,7 @@ async def test_coordinator_permission_error_with_real_files(
 
     with patch.object(Path, "unlink", mock_unlink):
         await coordinator.async_run_cleanup_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     # Should delete 2 out of 3 files (one failed with permission error)
@@ -410,6 +418,7 @@ async def test_coordinator_file_pattern_matching(
         os.utime(file_path, (old_time, old_time))
 
     await coordinator.async_run_scan_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     # Should only count JPG files
@@ -455,6 +464,7 @@ async def test_coordinator_retention_days_boundary(
         os.utime(file_path, (old_time, old_time))
 
     await coordinator.async_run_scan_now()
+    await hass.async_block_till_done()  # Wait for refresh to complete
     result = coordinator.data
 
     assert result["total_files"] == 4
