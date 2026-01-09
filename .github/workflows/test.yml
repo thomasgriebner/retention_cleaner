@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: ["**"]  # Alle Branches
+    branches: ["**"]
   pull_request:
     branches: [main]
 
@@ -13,6 +13,8 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
 
+    name: Python ${{ matrix.python-version }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,18 +24,18 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements_test.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-asyncio pytest-cov voluptuous
-          # Try to install Home Assistant (may timeout, but tests will skip gracefully)
-          pip install --timeout 300 homeassistant || echo "Home Assistant installation failed, tests will be skipped"
-
-      - name: Lint with ruff
-        run: |
-          pip install ruff
-          ruff check custom_components/retention_cleaner/
-          ruff format --check custom_components/retention_cleaner/
+          pip install -r requirements_test.txt
 
       - name: Run tests with coverage
         run: |
@@ -42,14 +44,16 @@ jobs:
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-report=html \
-            --cov-fail-under=5
+            --cov-fail-under=80
+        env:
+          PYTHONPATH: ${{ github.workspace }}
 
-      - name: Coverage comment
+      - name: Generate coverage report
         if: matrix.python-version == '3.12'
         run: |
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          python -m pytest tests/ --cov=custom_components.retention_cleaner --cov-report=term >> $GITHUB_STEP_SUMMARY
+          coverage report >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload coverage to Codecov
@@ -58,3 +62,4 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+          verbose: true

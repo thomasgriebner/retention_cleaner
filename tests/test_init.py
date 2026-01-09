@@ -1,46 +1,228 @@
-"""Test retention cleaner integration logic."""
+"""Test retention_cleaner integration setup and teardown."""
+
+from unittest.mock import patch
+
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+import pytest
+
+from custom_components.retention_cleaner import (
+    PLATFORMS,
+    async_setup_entry,
+    async_unload_entry,
+)
 
 
-class TestIntegrationLogic:
-    """Test integration logic that doesn't require Home Assistant."""
+async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
+    """Test successful setup of the integration."""
+    mock_setup_entry.add_to_hass(hass)
 
-    def test_runtime_data_pattern(self):
-        """Test that runtime_data pattern works correctly."""
-        # Test the pattern we use: entry.runtime_data = coordinator
+    # Mock filesystem operations but let real coordinator run
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ) as mock_forward_setups,
+    ):
+        result = await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
 
-        class MockEntry:
-            def __init__(self):
-                self.entry_id = "test_123"
-                self.runtime_data = None
+    assert result is True
+    # The mock entry doesn't automatically update state
+    # We only care that setup returned True
 
-        class MockCoordinator:
-            def __init__(self):
-                self.data = {"test": "data"}
+    # Check coordinator is stored in runtime data
+    assert mock_setup_entry.runtime_data is not None
+    # Should be actual coordinator instance
+    assert hasattr(mock_setup_entry.runtime_data, "base_path")
+    # Verify platforms were forwarded
+    mock_forward_setups.assert_called_once_with(mock_setup_entry, PLATFORMS)
 
-        entry = MockEntry()
-        coordinator = MockCoordinator()
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
 
-        # This is what our integration does
-        entry.runtime_data = coordinator
 
-        # Test access pattern
-        retrieved_coordinator = entry.runtime_data
-        assert retrieved_coordinator == coordinator
-        assert retrieved_coordinator.data["test"] == "data"
+async def test_setup_entry_failure_first_refresh(hass: HomeAssistant, mock_setup_entry):
+    """Test setup failure during first coordinator refresh."""
+    mock_setup_entry.add_to_hass(hass)
 
-    def test_platforms_list_integrity(self):
-        """Test that PLATFORMS list is correctly defined."""
-        # Test the platforms we set up
-        expected_platforms = ["sensor", "binary_sensor", "button"]
+    # Mock filesystem to cause a scan failure
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", side_effect=PermissionError("Permission denied")),
+    ):
+        # The coordinator will catch the PermissionError, wrap in RuntimeError,
+        # then raise UpdateFailed which becomes ConfigEntryNotReady
+        from homeassistant.exceptions import ConfigEntryNotReady
 
-        # Verify all platforms are strings
-        for platform in expected_platforms:
-            assert isinstance(platform, str)
-            assert platform.strip() == platform  # No whitespace
-            assert len(platform) > 0  # Not empty
+        with pytest.raises(ConfigEntryNotReady):
+            await async_setup_entry(hass, mock_setup_entry)
 
-        # Verify we have expected platforms
-        assert "sensor" in expected_platforms
-        assert "binary_sensor" in expected_platforms
-        assert "button" in expected_platforms
-        assert len(expected_platforms) == 3  # Only these three
+
+async def test_unload_entry(hass: HomeAssistant, init_integration):
+    """Test unloading the integration."""
+    entry = init_integration
+
+    # Verify entry is loaded
+    assert entry.state == ConfigEntryState.LOADED
+
+    # Mock the coordinator's async_shutdown method
+    coordinator = entry.runtime_data
+    with patch.object(coordinator, "async_shutdown") as mock_shutdown:
+        # Unload the entry
+        result = await async_unload_entry(hass, entry)
+
+        assert result is True
+        # Coordinator should be shut down properly
+        mock_shutdown.assert_called_once()
+
+
+async def test_setup_multiple_entries(
+    hass: HomeAssistant, mock_setup_entry, mock_setup_entry_no_dry_run
+):
+    """Test setting up multiple config entries."""
+    mock_setup_entry.add_to_hass(hass)
+    mock_setup_entry_no_dry_run.add_to_hass(hass)
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
+    ):
+        # Setup both entries
+        result1 = await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
+        result2 = await async_setup_entry(hass, mock_setup_entry_no_dry_run)
+        await hass.async_block_till_done()
+
+    assert result1 is True
+    assert result2 is True
+    assert mock_setup_entry.runtime_data is not None
+    assert mock_setup_entry_no_dry_run.runtime_data is not None
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
+    await async_unload_entry(hass, mock_setup_entry_no_dry_run)
+
+
+async def test_platforms_setup(hass: HomeAssistant, mock_setup_entry):
+    """Test that all platforms are set up."""
+    mock_setup_entry.add_to_hass(hass)
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups"
+        ) as mock_forward_setups,
+    ):
+        await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
+
+        # Verify all platforms are forwarded for setup
+        mock_forward_setups.assert_called_once_with(mock_setup_entry, PLATFORMS)
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
+
+
+async def test_entry_reload(hass: HomeAssistant, init_integration):
+    """Test reloading a config entry."""
+    entry = init_integration
+
+    # Reload the entry - this will unload and then setup again
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Entry should still be loaded after reload
+    assert entry.state == ConfigEntryState.LOADED
+
+    # Clean up new coordinator after reload
+    await async_unload_entry(hass, entry)
+
+
+async def test_coordinator_initialization_params(hass: HomeAssistant, mock_setup_entry):
+    """Test coordinator is initialized with correct parameters."""
+    mock_setup_entry.add_to_hass(hass)
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
+    ):
+        await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
+
+        # Verify coordinator was initialized correctly
+        coordinator = mock_setup_entry.runtime_data
+        assert coordinator.base_path == mock_setup_entry.data["base_path"]
+        assert coordinator.pattern == mock_setup_entry.data["pattern"]
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
+
+
+async def test_runtime_data_structure(hass: HomeAssistant, mock_setup_entry):
+    """Test that runtime data is properly structured."""
+    mock_setup_entry.add_to_hass(hass)
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
+    ):
+        await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
+
+        # Runtime data should be the coordinator itself
+        assert mock_setup_entry.runtime_data is not None
+        assert hasattr(mock_setup_entry.runtime_data, "base_path")
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
+
+
+async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry):
+    """Test that options updates trigger coordinator update."""
+    mock_setup_entry.add_to_hass(hass)
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
+    ):
+        await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
+
+        # Update options
+        hass.config_entries.async_update_entry(
+            mock_setup_entry, options={"retention_days": 14}
+        )
+        await hass.async_block_till_done()
+
+        # Coordinator should still be accessible
+        assert mock_setup_entry.runtime_data is not None
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)

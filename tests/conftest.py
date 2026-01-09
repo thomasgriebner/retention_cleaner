@@ -1,81 +1,150 @@
-"""Test fixtures and configuration for retention cleaner tests."""
+"""Test configuration and fixtures for retention_cleaner tests."""
 
 from unittest.mock import Mock, patch
 
+from freezegun import freeze_time
 import pytest
 
-# Import constants without HA dependencies
-try:
-    from custom_components.retention_cleaner.const import (
-        CONF_BASE_PATH,
-        CONF_DRY_RUN,
-        CONF_MAX_DELETES,
-        CONF_PATTERN,
-        CONF_RETENTION_DAYS,
-        CONF_SCHEDULE_TIME,
-        DOMAIN,
+# Enable pytest-homeassistant-custom-component fixtures
+pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations):
+    """Enable custom integration for all tests."""
+    yield
+
+
+@pytest.fixture
+def mock_setup_entry():
+    """Create a mock config entry for testing."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    return MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+        },
+        entry_id="test_entry_123",
     )
-except ImportError:
-    # Fallback constants for testing
-    DOMAIN = "retention_cleaner"
-    CONF_BASE_PATH = "base_path"
-    CONF_PATTERN = "pattern"
-    CONF_RETENTION_DAYS = "retention_days"
-    CONF_DRY_RUN = "dry_run"
-    CONF_MAX_DELETES = "max_deletes"
-    CONF_SCHEDULE_TIME = "schedule_time"
 
 
 @pytest.fixture
-def mock_config_entry() -> dict:
-    """Mock config entry data for testing."""
+def mock_setup_entry_no_dry_run():
+    """Create a mock config entry with dry run disabled."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    return MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup No Dry Run",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.log",
+            "retention_days": 3,
+            "dry_run": False,
+            "max_deletes": 50,
+            "run_at": "04:00",
+        },
+        entry_id="test_entry_456",
+    )
+
+
+@pytest.fixture
+async def init_integration(hass, mock_setup_entry):
+    """Set up the retention_cleaner integration."""
+    mock_setup_entry.add_to_hass(hass)
+
+    # Mock only the filesystem operations, let our coordinator code run
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        # Actually setup the integration
+        assert await hass.config_entries.async_setup(mock_setup_entry.entry_id)
+        await hass.async_block_till_done()
+
+    # Verify runtime_data was set during setup
+    assert hasattr(mock_setup_entry, "runtime_data")
+    assert mock_setup_entry.runtime_data is not None
+
+    # Return the original entry which should now have runtime_data set
+    return mock_setup_entry
+
+
+@pytest.fixture
+def mock_path_glob(tmp_path):
+    """Mock Path.glob to return test files."""
+    test_files = []
+    for i in range(10):
+        file = tmp_path / f"test_{i}.jpg"
+        file.touch()
+        # Set modification time for some files to be old
+        if i < 5:
+            import os
+            import time
+
+            old_time = time.time() - (8 * 24 * 60 * 60)  # 8 days old
+            os.utime(file, (old_time, old_time))
+        test_files.append(file)
+
+    with patch("pathlib.Path.glob") as mock_glob:
+        mock_glob.return_value = test_files
+        yield mock_glob, test_files
+
+
+@pytest.fixture
+def mock_file_system_operations():
+    """Mock file system operations for testing."""
+    with (
+        patch("pathlib.Path.exists") as mock_exists,
+        patch("pathlib.Path.is_dir") as mock_is_dir,
+        patch("pathlib.Path.unlink") as mock_unlink,
+        patch("pathlib.Path.stat") as mock_stat,
+    ):
+        mock_exists.return_value = True
+        mock_is_dir.return_value = True
+
+        # Mock stat to return file info
+        mock_stat_obj = Mock()
+        mock_stat_obj.st_mtime = 1700000000  # Fixed timestamp
+        mock_stat_obj.st_size = 1024  # 1KB file
+        mock_stat.return_value = mock_stat_obj
+
+        yield {
+            "exists": mock_exists,
+            "is_dir": mock_is_dir,
+            "unlink": mock_unlink,
+            "stat": mock_stat,
+        }
+
+
+@pytest.fixture
+def mock_coordinator_data():
+    """Mock coordinator data for entity tests."""
+    from datetime import UTC, datetime
+
     return {
-        CONF_BASE_PATH: "/media/test",
-        CONF_PATTERN: "*.jpg",
-        CONF_RETENTION_DAYS: 7,
-        CONF_DRY_RUN: True,
-        CONF_MAX_DELETES: 100,
-        CONF_SCHEDULE_TIME: "02:00",
+        "total_files": 100,
+        "older_than_retention": 25,
+        "deleted_last_run": 10,
+        "deleted_bytes_last_run": 102400,
+        "last_scan": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+        "last_cleanup": datetime(2024, 1, 1, 2, 0, 0, tzinfo=UTC),
+        "last_scan_duration_ms": 150,  # int milliseconds
+        "last_cleanup_duration_ms": 500,  # int milliseconds
+        "path_available": True,
     }
 
 
 @pytest.fixture
-def mock_config_entry_obj():
-    """Mock ConfigEntry object for integration tests."""
-    entry = Mock()
-    entry.entry_id = "test_entry_123"
-    entry.title = "Test Retention Cleaner"
-    entry.data = {
-        CONF_BASE_PATH: "/media/test",
-        CONF_PATTERN: "*.jpg",
-        CONF_RETENTION_DAYS: 7,
-        CONF_DRY_RUN: True,
-        CONF_MAX_DELETES: 100,
-        CONF_SCHEDULE_TIME: "02:00",
-    }
-    return entry
-
-
-@pytest.fixture
-def mock_hass():
-    """Mock Home Assistant instance."""
-    from unittest.mock import AsyncMock
-
-    hass = Mock()
-    hass.config_entries = Mock()
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    hass.data = {}
-    hass.async_create_task = Mock()
-    hass.async_add_executor_job = Mock()
-    return hass
-
-
-@pytest.fixture
-def mock_file_system():
-    """Mock file system operations."""
-    with patch("pathlib.Path") as mock_path:
-        # Setup mock path behavior
-        mock_instance = Mock()
-        mock_path.return_value = mock_instance
-        yield mock_path, mock_instance
+def freezer():
+    """Freeze time for testing scheduled operations."""
+    with freeze_time("2024-01-01 12:00:00") as frozen_time:
+        yield frozen_time

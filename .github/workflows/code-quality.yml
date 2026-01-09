@@ -20,34 +20,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install Ruff
-        run: pip install ruff
+        run: pip install ruff==0.7.4
 
       - name: Run Ruff Linter
         run: ruff check .
 
       - name: Run Ruff Formatter
         run: ruff format --check .
-
-  pytest:
-    name: Tests
-    runs-on: ubuntu-latest
-    if: false # Disabled until tests are implemented
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          pip install pytest pytest-homeassistant-custom-component
-          pip install -r requirements_dev.txt
-
-      - name: Run tests
-        run: pytest
 
   quality-gate:
     name: Quality Gate
