@@ -65,6 +65,9 @@ async def test_coordinator_scan_with_real_files(
     assert result["older_than_retention"] == 5
     assert result["path_available"] is True
 
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
+
 
 async def test_coordinator_cleanup_dry_run_real_files(
     hass: HomeAssistant, mock_setup_entry, tmp_path
@@ -103,6 +106,9 @@ async def test_coordinator_cleanup_dry_run_real_files(
     assert result["deleted_last_run"] == 0
     for file in test_files:
         assert file.exists()  # All files should still exist
+
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
 
 
 async def test_coordinator_cleanup_with_deletion_real_files(
@@ -145,6 +151,9 @@ async def test_coordinator_cleanup_with_deletion_real_files(
     for file in test_files:
         assert not file.exists()  # All files should be deleted
 
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
+
 
 async def test_coordinator_max_deletes_limit_real_files(
     hass: HomeAssistant, mock_setup_entry_no_dry_run, tmp_path
@@ -181,6 +190,9 @@ async def test_coordinator_max_deletes_limit_real_files(
     result = coordinator.data
 
     assert result["deleted_last_run"] == 3
+
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
 
     remaining = list(media_dir.glob("*.log"))
     assert len(remaining) == 7  # 10 - 3 = 7
@@ -253,6 +265,9 @@ async def test_coordinator_race_condition_handling(
     assert result["deleted_last_run"] == 2
     assert not test_files[1].exists()
     assert not test_files[2].exists()
+
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
 
 
 async def test_coordinator_schedule_setup(hass: HomeAssistant, mock_setup_entry):
@@ -332,6 +347,9 @@ async def test_coordinator_performance_tracking(
     assert isinstance(result["last_cleanup_duration_ms"], int)
     assert result["last_cleanup_duration_ms"] >= 0
 
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
+
 
 async def test_coordinator_permission_error_with_real_files(
     hass: HomeAssistant, mock_setup_entry_no_dry_run, tmp_path
@@ -385,6 +403,9 @@ async def test_coordinator_permission_error_with_real_files(
     assert len(remaining_files) == 1
     assert "test_1.log" in str(remaining_files[0])  # The protected file remains
 
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
+
 
 async def test_coordinator_file_pattern_matching(
     hass: HomeAssistant, mock_setup_entry, tmp_path
@@ -430,6 +451,9 @@ async def test_coordinator_file_pattern_matching(
     assert result["total_files"] == 2  # Only 2 JPG files
     assert result["older_than_retention"] == 2  # Both JPG files are old
 
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()
+
 
 async def test_coordinator_retention_days_boundary(
     hass: HomeAssistant, mock_setup_entry, tmp_path
@@ -474,3 +498,6 @@ async def test_coordinator_retention_days_boundary(
 
     assert result["total_files"] == 4
     assert result["older_than_retention"] == 2  # Only 2 files older than 7 days
+
+    # Clean up coordinator to avoid lingering timers
+    await coordinator.async_shutdown()

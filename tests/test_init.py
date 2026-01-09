@@ -41,6 +41,9 @@ async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
     # Verify platforms were forwarded
     mock_forward_setups.assert_called_once_with(mock_setup_entry, PLATFORMS)
 
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
+
 
 async def test_setup_entry_failure_first_refresh(hass: HomeAssistant, mock_setup_entry):
     """Test setup failure during first coordinator refresh."""
@@ -105,6 +108,10 @@ async def test_setup_multiple_entries(
     assert mock_setup_entry.runtime_data is not None
     assert mock_setup_entry_no_dry_run.runtime_data is not None
 
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
+    await async_unload_entry(hass, mock_setup_entry_no_dry_run)
+
 
 async def test_platforms_setup(hass: HomeAssistant, mock_setup_entry):
     """Test that all platforms are set up."""
@@ -123,6 +130,9 @@ async def test_platforms_setup(hass: HomeAssistant, mock_setup_entry):
 
         # Verify all platforms are forwarded for setup
         mock_forward_setups.assert_called_once_with(mock_setup_entry, PLATFORMS)
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
 
 
 async def test_entry_reload(hass: HomeAssistant, init_integration):
@@ -168,6 +178,9 @@ async def test_coordinator_initialization_params(hass: HomeAssistant, mock_setup
         assert coordinator.base_path == mock_setup_entry.data["base_path"]
         assert coordinator.pattern == mock_setup_entry.data["pattern"]
 
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
+
 
 async def test_runtime_data_structure(hass: HomeAssistant, mock_setup_entry):
     """Test that runtime data is properly structured."""
@@ -188,6 +201,9 @@ async def test_runtime_data_structure(hass: HomeAssistant, mock_setup_entry):
         # Runtime data should be the coordinator itself
         assert mock_setup_entry.runtime_data is not None
         assert hasattr(mock_setup_entry.runtime_data, "base_path")
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)
 
 
 async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry):
@@ -214,3 +230,6 @@ async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry
 
         # Coordinator should still be accessible
         assert mock_setup_entry.runtime_data is not None
+
+    # Clean up to avoid lingering timers
+    await async_unload_entry(hass, mock_setup_entry)

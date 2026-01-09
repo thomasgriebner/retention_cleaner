@@ -34,7 +34,7 @@ async def test_scan_button_press(hass: HomeAssistant, init_integration):
     """Test pressing the scan button triggers a scan."""
     coordinator = init_integration.runtime_data
 
-    # Store initial last_scan time
+    # Store initial last_scan time (may be None initially)
     initial_last_scan = coordinator.last_scan
 
     await hass.services.async_call(
@@ -44,16 +44,18 @@ async def test_scan_button_press(hass: HomeAssistant, init_integration):
         blocking=True,
     )
 
-    # Verify scan was triggered by checking that last_scan was updated
-    assert coordinator.last_scan != initial_last_scan
+    # Verify scan was triggered - last_scan should now be set
     assert coordinator.last_scan is not None
+    # If there was an initial value, it should be different
+    if initial_last_scan is not None:
+        assert coordinator.last_scan != initial_last_scan
 
 
 async def test_cleanup_button_press(hass: HomeAssistant, init_integration):
     """Test pressing the cleanup button triggers a cleanup."""
     coordinator = init_integration.runtime_data
 
-    # Store initial last_cleanup time
+    # Store initial last_cleanup time (may be None initially)
     initial_last_cleanup = coordinator.last_cleanup
 
     await hass.services.async_call(
@@ -63,9 +65,11 @@ async def test_cleanup_button_press(hass: HomeAssistant, init_integration):
         blocking=True,
     )
 
-    # Verify cleanup was triggered by checking that last_cleanup was updated
-    assert coordinator.last_cleanup != initial_last_cleanup
+    # Verify cleanup was triggered - last_cleanup should now be set
     assert coordinator.last_cleanup is not None
+    # If there was an initial value, it should be different
+    if initial_last_cleanup is not None:
+        assert coordinator.last_cleanup != initial_last_cleanup
 
 
 async def test_button_availability(hass: HomeAssistant, init_integration):
@@ -73,14 +77,11 @@ async def test_button_availability(hass: HomeAssistant, init_integration):
     coordinator = init_integration.runtime_data
 
     scan_state = hass.states.get("button.test_cleanup_scan_now")
-    # Buttons typically have 'unknown' state when available
-    assert scan_state.state in [
-        "unknown",
-        "2024-01-01T12:00:00",
-    ]  # Could be timestamp if recently pressed
+    # Buttons always have 'unknown' state in Home Assistant
+    assert scan_state.state == "unknown"
 
     cleanup_state = hass.states.get("button.test_cleanup_run_cleanup")
-    assert cleanup_state.state in ["unknown", None]  # Could be None if never pressed
+    assert cleanup_state.state == "unknown"  # Buttons always have 'unknown' state
 
     # Test button functionality instead of availability states
     # Buttons should be functional when coordinator is working
