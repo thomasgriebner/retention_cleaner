@@ -70,15 +70,15 @@ async def test_unload_entry(hass: HomeAssistant, init_integration):
     # Verify entry is loaded
     assert entry.state == ConfigEntryState.LOADED
 
-    # Mock the coordinator's async_remove_listeners method
+    # Mock the coordinator's async_shutdown method
     coordinator = entry.runtime_data
-    with patch.object(coordinator, "async_remove_listeners") as mock_remove_listeners:
+    with patch.object(coordinator, "async_shutdown") as mock_shutdown:
         # Unload the entry
         result = await async_unload_entry(hass, entry)
 
         assert result is True
-        # Coordinator listeners should be removed
-        mock_remove_listeners.assert_called_once()
+        # Coordinator should be shut down properly
+        mock_shutdown.assert_called_once()
 
 
 async def test_setup_multiple_entries(
