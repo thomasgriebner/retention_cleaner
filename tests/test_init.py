@@ -156,6 +156,9 @@ async def test_entry_reload(hass: HomeAssistant, init_integration):
     # Entry should still be loaded after reload
     assert entry.state == ConfigEntryState.LOADED
 
+    # Clean up new coordinator after reload
+    await async_unload_entry(hass, entry)
+
 
 async def test_coordinator_initialization_params(hass: HomeAssistant, mock_setup_entry):
     """Test coordinator is initialized with correct parameters."""

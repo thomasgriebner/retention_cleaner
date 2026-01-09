@@ -160,11 +160,12 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry):
         super().__init__()
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         errors: dict[str, str] = {}
 
-        current = {**self.config_entry.data, **self.config_entry.options}
+        current = {**self._config_entry.data, **self._config_entry.options}
 
         if user_input is not None:
             try:
