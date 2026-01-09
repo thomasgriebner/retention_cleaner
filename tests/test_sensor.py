@@ -126,10 +126,12 @@ async def test_sensor_device_info(hass: HomeAssistant, init_integration):
 
     # Verify device info
     device_registry = hass.helpers.device_registry.async_get(hass)
-    device = device_registry.async_get(entry.device_id)
+    device = device_registry.async_get_device(
+        identifiers={(DOMAIN, init_integration.entry_id)}
+    )
     assert device is not None
     assert device.name == "Test Cleanup"
-    assert device.model == "/media/test"
+    assert device.model == "Folder retention rule"
     assert device.manufacturer == "Retention Cleaner"
     assert (DOMAIN, init_integration.entry_id) in device.identifiers
 

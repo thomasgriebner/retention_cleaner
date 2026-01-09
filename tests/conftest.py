@@ -137,7 +137,7 @@ def mock_coordinator_data():
         "last_cleanup": "2024-01-01T02:00:00",
         "last_scan_duration_ms": 150.5,
         "last_cleanup_duration_ms": 500.2,
-        "path_accessible": True,
+        "path_available": True,
     }
 
 

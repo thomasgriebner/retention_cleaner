@@ -1,6 +1,5 @@
 """Test retention_cleaner binary sensor entities."""
 
-from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -25,7 +24,8 @@ async def test_binary_sensor_attributes(hass: HomeAssistant, init_integration):
 
     state = hass.states.get("binary_sensor.test_cleanup_path_available")
     assert state is not None
-    assert state.attributes.get("device_class") == BinarySensorDeviceClass.CONNECTIVITY
+    # Path availability doesn't need a specific device class
+    assert state.attributes.get("device_class") is None
 
 
 async def test_binary_sensor_path_accessible(hass: HomeAssistant, init_integration):
@@ -33,7 +33,7 @@ async def test_binary_sensor_path_accessible(hass: HomeAssistant, init_integrati
     coordinator = init_integration.runtime_data
 
     coordinator.data = {
-        "path_accessible": True,
+        "path_available": True,
     }
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
@@ -42,7 +42,7 @@ async def test_binary_sensor_path_accessible(hass: HomeAssistant, init_integrati
     assert state.state == STATE_ON
 
     coordinator.data = {
-        "path_accessible": False,
+        "path_available": False,
     }
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
@@ -93,7 +93,9 @@ async def test_binary_sensor_device_info(hass: HomeAssistant, init_integration):
 
     # Verify device info
     device_registry = hass.helpers.device_registry.async_get(hass)
-    device = device_registry.async_get(entry.device_id)
+    device = device_registry.async_get_device(
+        identifiers={(DOMAIN, init_integration.entry_id)}
+    )
     assert device is not None
     assert device.name == "Test Cleanup"
     assert device.model == "Folder retention rule"

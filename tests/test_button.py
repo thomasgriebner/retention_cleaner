@@ -111,7 +111,9 @@ async def test_button_device_info(hass: HomeAssistant, init_integration):
 
     # Verify device info
     device_registry = hass.helpers.device_registry.async_get(hass)
-    device = device_registry.async_get(scan_entry.device_id)
+    device = device_registry.async_get_device(
+        identifiers={(DOMAIN, init_integration.entry_id)}
+    )
     assert device is not None
     assert device.name == "Test Cleanup"
     assert device.model == "Folder retention rule"
