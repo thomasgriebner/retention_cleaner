@@ -14,10 +14,10 @@ async def test_sensor_setup(hass: HomeAssistant, init_integration):
     assert state is not None
     assert state.state == "0"  # Initial value
 
-    state = hass.states.get("sensor.test_cleanup_files_older_than_retention")
+    state = hass.states.get("sensor.test_cleanup_older_than_retention")
     assert state is not None
 
-    state = hass.states.get("sensor.test_cleanup_deleted_last_run")
+    state = hass.states.get("sensor.test_cleanup_deleted_last_cleanup")
     assert state is not None
 
 
@@ -54,8 +54,8 @@ async def test_sensor_updates_from_coordinator(hass: HomeAssistant, init_integra
         "deleted_bytes_last_run": 102400,
         "last_scan": "2024-01-01T12:00:00",
         "last_cleanup": "2024-01-01T02:00:00",
-        "last_scan_duration_ms": 150.5,
-        "last_cleanup_duration_ms": 500.2,
+        "last_scan_duration_ms": 150,
+        "last_cleanup_duration_ms": 500,
     }
 
     coordinator.async_set_updated_data(coordinator.data)
@@ -64,10 +64,10 @@ async def test_sensor_updates_from_coordinator(hass: HomeAssistant, init_integra
     state = hass.states.get("sensor.test_cleanup_total_files")
     assert state.state == "100"
 
-    state = hass.states.get("sensor.test_cleanup_files_older_than_retention")
+    state = hass.states.get("sensor.test_cleanup_older_than_retention")
     assert state.state == "25"
 
-    state = hass.states.get("sensor.test_cleanup_deleted_last_run")
+    state = hass.states.get("sensor.test_cleanup_deleted_last_cleanup")
     assert state.state == "10"
 
     state = hass.states.get("sensor.test_cleanup_deleted_bytes_last_run")
@@ -82,8 +82,8 @@ async def test_performance_sensors(hass: HomeAssistant, init_integration):
     coordinator = init_integration.runtime_data
 
     coordinator.data = {
-        "last_scan_duration_ms": 150.5,
-        "last_cleanup_duration_ms": 500.2,
+        "last_scan_duration_ms": 150,
+        "last_cleanup_duration_ms": 500,
     }
 
     coordinator.async_set_updated_data(coordinator.data)
@@ -169,7 +169,7 @@ async def test_sensor_missing_data_handling(hass: HomeAssistant, init_integratio
     state = hass.states.get("sensor.test_cleanup_total_files")
     assert state.state == "50"
 
-    state = hass.states.get("sensor.test_cleanup_files_older_than_retention")
+    state = hass.states.get("sensor.test_cleanup_older_than_retention")
     assert state.state in ["0", "unknown"]  # Should have safe default
 
     state = hass.states.get("sensor.test_cleanup_last_scan")

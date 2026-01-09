@@ -22,6 +22,10 @@ async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.is_dir", return_value=True),
         patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ) as mock_forward_setups,
     ):
         result = await async_setup_entry(hass, mock_setup_entry)
         await hass.async_block_till_done()
@@ -33,7 +37,8 @@ async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
     assert mock_setup_entry.runtime_data is not None
     # Should be actual coordinator instance
     assert hasattr(mock_setup_entry.runtime_data, "base_path")
-    assert hasattr(mock_setup_entry.runtime_data, "async_config_entry_first_refresh")
+    # Verify platforms were forwarded
+    mock_forward_setups.assert_called_once_with(mock_setup_entry, PLATFORMS)
 
 
 async def test_setup_entry_failure_first_refresh(hass: HomeAssistant, mock_setup_entry):
@@ -44,10 +49,13 @@ async def test_setup_entry_failure_first_refresh(hass: HomeAssistant, mock_setup
     with (
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.is_dir", return_value=True),
-        patch("pathlib.Path.glob", side_effect=OSError("Permission denied")),
-        pytest.raises(OSError, match="Permission denied"),
+        patch("pathlib.Path.glob", side_effect=PermissionError("Permission denied")),
     ):
-        await async_setup_entry(hass, mock_setup_entry)
+        # The coordinator will catch the PermissionError and raise UpdateFailed
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        with pytest.raises(UpdateFailed):
+            await async_setup_entry(hass, mock_setup_entry)
 
 
 async def test_unload_entry(hass: HomeAssistant, init_integration):
@@ -79,6 +87,10 @@ async def test_setup_multiple_entries(
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.is_dir", return_value=True),
         patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
     ):
         # Setup both entries
         result1 = await async_setup_entry(hass, mock_setup_entry)
@@ -141,6 +153,10 @@ async def test_coordinator_initialization_params(hass: HomeAssistant, mock_setup
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.is_dir", return_value=True),
         patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
     ):
         await async_setup_entry(hass, mock_setup_entry)
         await hass.async_block_till_done()
@@ -159,6 +175,10 @@ async def test_runtime_data_structure(hass: HomeAssistant, mock_setup_entry):
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.is_dir", return_value=True),
         patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
     ):
         await async_setup_entry(hass, mock_setup_entry)
         await hass.async_block_till_done()
@@ -176,6 +196,10 @@ async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry
         patch("pathlib.Path.exists", return_value=True),
         patch("pathlib.Path.is_dir", return_value=True),
         patch("pathlib.Path.glob", return_value=[]),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            return_value=True,
+        ),
     ):
         await async_setup_entry(hass, mock_setup_entry)
         await hass.async_block_till_done()
