@@ -125,7 +125,7 @@ async def test_sensor_device_info(hass: HomeAssistant, init_integration):
     assert entry.device_id is not None
 
     # Verify device info
-    device_registry = hass.helpers.device_registry.async_get(hass)
+    device_registry = hass.helpers.device_registry.async_get()
     device = device_registry.async_get_device(
         identifiers={(DOMAIN, init_integration.entry_id)}
     )
