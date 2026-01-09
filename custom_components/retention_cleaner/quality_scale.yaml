@@ -34,9 +34,9 @@ rules:
   docs-installation-parameters: done
   entity-unavailable: done
   integration-owner:
-    status: exempt
+    status: todo
     comment: |
-      Single maintainer project
+      Check if single maintainer counts as done
   log-when-unavailable: done
   parallel-updates:
     status: done
@@ -69,9 +69,9 @@ rules:
   docs-troubleshooting: done
   docs-use-cases: done
   dynamic-devices:
-    status: exempt
+    status: todo
     comment: |
-      Each config entry creates one virtual device
+      Check if virtual device creation counts as dynamic devices
   entity-category: done
   entity-device-class: done
   entity-disabled-by-default:
