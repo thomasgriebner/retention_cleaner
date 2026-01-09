@@ -60,16 +60,11 @@ async def init_integration(hass, mock_setup_entry):
     """Set up the retention_cleaner integration."""
     mock_setup_entry.add_to_hass(hass)
 
-    # Mock the _scan_folder function to return valid test data
-    from custom_components.retention_cleaner.coordinator import ScanResult
-
-    mock_scan_result = ScanResult(
-        total_files=0, older_than_retention=0, path_available=True
-    )
-
-    with patch(
-        "custom_components.retention_cleaner.coordinator._scan_folder",
-        return_value=mock_scan_result,
+    # Mock only the filesystem operations, let our coordinator code run
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
     ):
         # Actually setup the integration
         assert await hass.config_entries.async_setup(mock_setup_entry.entry_id)

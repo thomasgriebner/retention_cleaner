@@ -15,7 +15,7 @@ async def test_button_setup(hass: HomeAssistant, init_integration):
     scan_button = hass.states.get("button.test_cleanup_scan_now")
     assert scan_button is not None
 
-    cleanup_button = hass.states.get("button.test_cleanup_cleanup_now")
+    cleanup_button = hass.states.get("button.test_cleanup_run_cleanup")
     assert cleanup_button is not None
 
 
@@ -27,7 +27,7 @@ async def test_button_attributes(hass: HomeAssistant, init_integration):
     assert scan_entry is not None
     assert scan_entry.unique_id == f"{init_integration.entry_id}_scan_now"
 
-    cleanup_entry = registry.async_get("button.test_cleanup_cleanup_now")
+    cleanup_entry = registry.async_get("button.test_cleanup_run_cleanup")
     assert cleanup_entry is not None
     assert cleanup_entry.unique_id == f"{init_integration.entry_id}_cleanup_now"
 
@@ -68,7 +68,7 @@ async def test_cleanup_button_press(hass: HomeAssistant, init_integration):
     await hass.services.async_call(
         "button",
         SERVICE_PRESS,
-        {ATTR_ENTITY_ID: "button.test_cleanup_cleanup_now"},
+        {ATTR_ENTITY_ID: "button.test_cleanup_run_cleanup"},
         blocking=True,
     )
 
@@ -83,7 +83,7 @@ async def test_button_availability(hass: HomeAssistant, init_integration):
     scan_state = hass.states.get("button.test_cleanup_scan_now")
     assert scan_state.state != "unavailable"
 
-    cleanup_state = hass.states.get("button.test_cleanup_cleanup_now")
+    cleanup_state = hass.states.get("button.test_cleanup_run_cleanup")
     assert cleanup_state.state != "unavailable"
 
     coordinator.last_update_success = False
@@ -93,7 +93,7 @@ async def test_button_availability(hass: HomeAssistant, init_integration):
     scan_state = hass.states.get("button.test_cleanup_scan_now")
     assert scan_state.state == "unavailable"
 
-    cleanup_state = hass.states.get("button.test_cleanup_cleanup_now")
+    cleanup_state = hass.states.get("button.test_cleanup_run_cleanup")
     assert cleanup_state.state == "unavailable"
 
 
@@ -105,7 +105,7 @@ async def test_button_device_info(hass: HomeAssistant, init_integration):
     assert scan_entry is not None
     assert scan_entry.device_id is not None
 
-    cleanup_entry = registry.async_get("button.test_cleanup_cleanup_now")
+    cleanup_entry = registry.async_get("button.test_cleanup_run_cleanup")
     assert cleanup_entry is not None
     assert cleanup_entry.device_id == scan_entry.device_id  # Same device
 
@@ -128,7 +128,7 @@ async def test_button_entity_category(hass: HomeAssistant, init_integration):
     assert scan_entry is not None
     assert scan_entry.entity_category is None  # User-facing control
 
-    cleanup_entry = registry.async_get("button.test_cleanup_cleanup_now")
+    cleanup_entry = registry.async_get("button.test_cleanup_run_cleanup")
     assert cleanup_entry is not None
     assert cleanup_entry.entity_category is None  # User-facing control
 
@@ -147,7 +147,7 @@ async def test_button_unique_ids_stable(hass: HomeAssistant, init_integration):
         "button", DOMAIN, f"{entry_id}_cleanup_now"
     )
     assert cleanup_entity is not None
-    assert cleanup_entity == "button.test_cleanup_cleanup_now"
+    assert cleanup_entity == "button.test_cleanup_run_cleanup"
 
 
 async def test_button_press_error_handling(hass: HomeAssistant, init_integration):
@@ -170,7 +170,7 @@ async def test_button_press_error_handling(hass: HomeAssistant, init_integration
     await hass.services.async_call(
         "button",
         SERVICE_PRESS,
-        {ATTR_ENTITY_ID: "button.test_cleanup_cleanup_now"},
+        {ATTR_ENTITY_ID: "button.test_cleanup_run_cleanup"},
         blocking=True,
     )
 
@@ -195,7 +195,7 @@ async def test_multiple_button_presses(hass: HomeAssistant, init_integration):
         await hass.services.async_call(
             "button",
             SERVICE_PRESS,
-            {ATTR_ENTITY_ID: "button.test_cleanup_cleanup_now"},
+            {ATTR_ENTITY_ID: "button.test_cleanup_run_cleanup"},
             blocking=True,
         )
 

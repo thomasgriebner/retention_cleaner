@@ -17,7 +17,7 @@ async def test_sensor_setup(hass: HomeAssistant, init_integration):
     state = hass.states.get("sensor.test_cleanup_files_older_than_retention")
     assert state is not None
 
-    state = hass.states.get("sensor.test_cleanup_deleted_last_cleanup")
+    state = hass.states.get("sensor.test_cleanup_deleted_last_run")
     assert state is not None
 
 
@@ -29,10 +29,10 @@ async def test_sensor_attributes(hass: HomeAssistant, init_integration):
     assert entry is not None
     assert entry.unique_id == f"{init_integration.entry_id}_total_files"
 
-    entry = registry.async_get("sensor.test_cleanup_deleted_bytes_last_cleanup")
+    entry = registry.async_get("sensor.test_cleanup_deleted_bytes_last_run")
     assert entry is not None
     assert entry.unique_id == f"{init_integration.entry_id}_deleted_bytes_last_run"
-    state = hass.states.get("sensor.test_cleanup_deleted_bytes_last_cleanup")
+    state = hass.states.get("sensor.test_cleanup_deleted_bytes_last_run")
     assert state is not None
     assert state.attributes.get("device_class") == SensorDeviceClass.DATA_SIZE
     assert state.attributes.get("unit_of_measurement") == UnitOfInformation.BYTES
@@ -67,10 +67,10 @@ async def test_sensor_updates_from_coordinator(hass: HomeAssistant, init_integra
     state = hass.states.get("sensor.test_cleanup_files_older_than_retention")
     assert state.state == "25"
 
-    state = hass.states.get("sensor.test_cleanup_deleted_last_cleanup")
+    state = hass.states.get("sensor.test_cleanup_deleted_last_run")
     assert state.state == "10"
 
-    state = hass.states.get("sensor.test_cleanup_deleted_bytes_last_cleanup")
+    state = hass.states.get("sensor.test_cleanup_deleted_bytes_last_run")
     assert state.state == "102400"
 
     state = hass.states.get("sensor.test_cleanup_last_scan")
@@ -89,14 +89,14 @@ async def test_performance_sensors(hass: HomeAssistant, init_integration):
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    state = hass.states.get("sensor.test_cleanup_last_scan_duration")
+    state = hass.states.get("sensor.test_cleanup_last_scan_duration_ms")
     assert state is not None
     assert state.state == "150.5"
     assert state.attributes.get("device_class") == SensorDeviceClass.DURATION
     assert state.attributes.get("unit_of_measurement") == "ms"
     assert state.attributes.get("state_class") == SensorStateClass.MEASUREMENT
 
-    state = hass.states.get("sensor.test_cleanup_last_cleanup_duration")
+    state = hass.states.get("sensor.test_cleanup_last_cleanup_duration_ms")
     assert state is not None
     assert state.state == "500.2"
 
@@ -141,8 +141,8 @@ async def test_diagnostic_sensors(hass: HomeAssistant, init_integration):
     diagnostic_sensors = [
         "sensor.test_cleanup_last_scan",
         "sensor.test_cleanup_last_cleanup",
-        "sensor.test_cleanup_last_scan_duration",
-        "sensor.test_cleanup_last_cleanup_duration",
+        "sensor.test_cleanup_last_scan_duration_ms",
+        "sensor.test_cleanup_last_cleanup_duration_ms",
     ]
 
     for sensor_id in diagnostic_sensors:
