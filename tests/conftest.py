@@ -37,11 +37,32 @@ def mock_config_entry() -> dict:
     }
 
 
+@pytest.fixture 
+def mock_config_entry_obj():
+    """Mock ConfigEntry object for integration tests."""
+    entry = Mock()
+    entry.entry_id = "test_entry_123"
+    entry.title = "Test Retention Cleaner"
+    entry.data = {
+        CONF_BASE_PATH: "/media/test",
+        CONF_PATTERN: "*.jpg", 
+        CONF_RETENTION_DAYS: 7,
+        CONF_DRY_RUN: True,
+        CONF_MAX_DELETES: 100,
+        CONF_SCHEDULE_TIME: "02:00",
+    }
+    return entry
+
+
 @pytest.fixture
 def mock_hass():
     """Mock Home Assistant instance."""
+    from unittest.mock import AsyncMock
+    
     hass = Mock()
     hass.config_entries = Mock()
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     hass.data = {}
     hass.async_create_task = Mock()
     hass.async_add_executor_job = Mock()
