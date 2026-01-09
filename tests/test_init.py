@@ -63,13 +63,15 @@ async def test_unload_entry(hass: HomeAssistant, init_integration):
     # Verify entry is loaded
     assert entry.state == ConfigEntryState.LOADED
 
-    # Unload the entry
-    result = await async_unload_entry(hass, entry)
-
-    assert result is True
-    # Coordinator should be shut down
+    # Mock the coordinator's async_remove_listeners method
     coordinator = entry.runtime_data
-    coordinator.async_shutdown.assert_called_once()
+    with patch.object(coordinator, "async_remove_listeners") as mock_remove_listeners:
+        # Unload the entry
+        result = await async_unload_entry(hass, entry)
+
+        assert result is True
+        # Coordinator listeners should be removed
+        mock_remove_listeners.assert_called_once()
 
 
 async def test_setup_multiple_entries(
@@ -124,12 +126,16 @@ async def test_entry_reload(hass: HomeAssistant, init_integration):
     # Get initial coordinator
     initial_coordinator = entry.runtime_data
 
-    # Reload the entry
-    await hass.config_entries.async_reload(entry.entry_id)
-    await hass.async_block_till_done()
+    # Mock the coordinator's async_remove_listeners method
+    with patch.object(
+        initial_coordinator, "async_remove_listeners"
+    ) as mock_remove_listeners:
+        # Reload the entry
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Verify old coordinator was shut down
-    initial_coordinator.async_shutdown.assert_called()
+        # Verify old coordinator listeners were removed during unload
+        mock_remove_listeners.assert_called()
 
     # Entry should still be loaded after reload
     assert entry.state == ConfigEntryState.LOADED

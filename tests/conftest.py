@@ -64,7 +64,8 @@ async def init_integration(hass, mock_setup_entry):
     assert await hass.config_entries.async_setup(mock_setup_entry.entry_id)
     await hass.async_block_till_done()
 
-    return mock_setup_entry
+    # Return the config entry which now has runtime_data set
+    return hass.config_entries.async_get_entry(mock_setup_entry.entry_id)
 
 
 @pytest.fixture
