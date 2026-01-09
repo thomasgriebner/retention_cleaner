@@ -5,7 +5,7 @@ line-length = 88
 [tool.ruff.lint]
 select = [
     "E",  # pycodestyle
-    "W",  # pycodestyle  
+    "W",  # pycodestyle
     "F",  # pyflakes
     "UP", # pyupgrade
     "B",  # flake8-bugbear
@@ -38,3 +38,19 @@ known-first-party = ["custom_components.retention_cleaner"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--disable-warnings",
+    "-ra",
+]
+asyncio_mode = "auto"

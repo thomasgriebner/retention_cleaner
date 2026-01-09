@@ -34,9 +34,9 @@ rules:
   docs-installation-parameters: done
   entity-unavailable: done
   integration-owner:
-    status: todo
+    status: done
     comment: |
-      Check if single maintainer counts as done
+      Single maintainer listed in manifest.json codeowners
   log-when-unavailable: done
   parallel-updates:
     status: done
