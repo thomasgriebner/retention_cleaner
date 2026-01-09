@@ -3,7 +3,8 @@
 from unittest.mock import patch
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_NAME
+
+# CONF_NAME not used in this integration - title derived from base_path
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -33,7 +34,6 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {
-                CONF_NAME: "Test Cleanup",
                 CONF_BASE_PATH: "/media/test",
                 CONF_PATTERN: "*.jpg",
                 CONF_RETENTION_DAYS: 7,
@@ -45,7 +45,7 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
     assert result2["type"] == FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Test Cleanup"
+    assert result2["title"] == "test"  # Derived from base_path "/media/test"
     assert result2["data"] == {
         CONF_BASE_PATH: "/media/test",
         CONF_PATTERN: "*.jpg",
@@ -66,7 +66,6 @@ async def test_form_invalid_path_not_media(hass: HomeAssistant) -> None:
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            CONF_NAME: "Test Cleanup",
             CONF_BASE_PATH: "/home/user/test",  # Invalid path
             CONF_PATTERN: "*.jpg",
             CONF_RETENTION_DAYS: 7,
@@ -90,7 +89,6 @@ async def test_form_dangerous_pattern(hass: HomeAssistant) -> None:
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            CONF_NAME: "Test Cleanup",
             CONF_BASE_PATH: "/media/test",
             CONF_PATTERN: "*",  # Dangerous pattern
             CONF_RETENTION_DAYS: 7,
@@ -114,7 +112,6 @@ async def test_form_invalid_pattern_syntax(hass: HomeAssistant) -> None:
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            CONF_NAME: "Test Cleanup",
             CONF_BASE_PATH: "/media/test",
             CONF_PATTERN: "***test.jpg",  # Invalid syntax
             CONF_RETENTION_DAYS: 7,
@@ -138,7 +135,6 @@ async def test_form_invalid_time_format(hass: HomeAssistant) -> None:
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            CONF_NAME: "Test Cleanup",
             CONF_BASE_PATH: "/media/test",
             CONF_PATTERN: "*.jpg",
             CONF_RETENTION_DAYS: 7,
@@ -161,7 +157,6 @@ async def test_form_negative_retention_days(hass: HomeAssistant) -> None:
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            CONF_NAME: "Test Cleanup",
             CONF_BASE_PATH: "/media/test",
             CONF_PATTERN: "*.jpg",
             CONF_RETENTION_DAYS: -1,  # Negative value
@@ -220,7 +215,6 @@ async def test_path_trailing_slash_removed(hass: HomeAssistant) -> None:
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {
-                CONF_NAME: "Test Cleanup",
                 CONF_BASE_PATH: "/media/test/",  # With trailing slash
                 CONF_PATTERN: "*.jpg",
                 CONF_RETENTION_DAYS: 7,
@@ -248,7 +242,6 @@ async def test_duplicate_entry_prevention(
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            CONF_NAME: "Another Cleanup",
             CONF_BASE_PATH: "/media/test",  # Same path as existing entry
             CONF_PATTERN: "*.png",
             CONF_RETENTION_DAYS: 7,
