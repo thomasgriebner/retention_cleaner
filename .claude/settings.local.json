@@ -9,7 +9,8 @@
       "Bash(python:*)",
       "WebFetch(domain:developers.home-assistant.io)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

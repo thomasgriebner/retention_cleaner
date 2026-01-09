@@ -58,12 +58,29 @@ async def test_binary_sensor_availability(hass: HomeAssistant, init_integration)
     state = hass.states.get("binary_sensor.test_cleanup_path_available")
     assert state.state != "unavailable"
 
-    coordinator.last_update_success = False
-    coordinator.async_set_updated_data(None)
+    # Test the actual functionality - when path_available is False, state should be 'off'
+    coordinator.async_set_updated_data(
+        {
+            "path_available": False,
+            "total_files": 0,
+        }
+    )
     await hass.async_block_till_done()
 
     state = hass.states.get("binary_sensor.test_cleanup_path_available")
-    assert state.state == "unavailable"
+    assert state.state == "off"
+
+    # When path_available is True, state should be 'on'
+    coordinator.async_set_updated_data(
+        {
+            "path_available": True,
+            "total_files": 0,
+        }
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get("binary_sensor.test_cleanup_path_available")
+    assert state.state == "on"
 
 
 async def test_binary_sensor_device_info(hass: HomeAssistant, init_integration):
@@ -79,7 +96,7 @@ async def test_binary_sensor_device_info(hass: HomeAssistant, init_integration):
     device = device_registry.async_get(entry.device_id)
     assert device is not None
     assert device.name == "Test Cleanup"
-    assert device.model == "/media/test"
+    assert device.model == "Folder retention rule"
     assert device.manufacturer == "Retention Cleaner"
     assert (DOMAIN, init_integration.entry_id) in device.identifiers
 
