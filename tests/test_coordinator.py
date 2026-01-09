@@ -56,11 +56,12 @@ async def test_coordinator_scan_with_real_files(
     (media_dir / "test.txt").touch()
     (media_dir / "other.png").touch()
 
-    result = await coordinator.async_scan_now()
+    await coordinator.async_run_scan_now()
+    result = coordinator.data
 
     assert result["total_files"] == 10  # Only .jpg files
     assert result["older_than_retention"] == 5
-    assert result["path_accessible"] is True
+    assert result["path_available"] is True
 
 
 async def test_coordinator_cleanup_dry_run_real_files(
@@ -93,7 +94,8 @@ async def test_coordinator_cleanup_dry_run_real_files(
         os.utime(file, (old_time, old_time))
         test_files.append(file)
 
-    result = await coordinator.async_run_cleanup_now()
+    await coordinator.async_run_cleanup_now()
+    result = coordinator.data
 
     assert result["deleted_last_run"] == 0
     for file in test_files:
@@ -131,7 +133,8 @@ async def test_coordinator_cleanup_with_deletion_real_files(
         os.utime(file, (old_time, old_time))
         test_files.append(file)
 
-    result = await coordinator.async_run_cleanup_now()
+    await coordinator.async_run_cleanup_now()
+    result = coordinator.data
 
     assert result["deleted_last_run"] == 5
     assert result["total_files"] == 0
@@ -169,7 +172,8 @@ async def test_coordinator_max_deletes_limit_real_files(
         old_time = time_module.time() - (4 * 24 * 60 * 60)
         os.utime(file, (old_time, old_time))
 
-    result = await coordinator.async_run_cleanup_now()
+    await coordinator.async_run_cleanup_now()
+    result = coordinator.data
 
     assert result["deleted_last_run"] == 3
 
@@ -195,7 +199,7 @@ async def test_coordinator_path_not_accessible(hass: HomeAssistant, mock_setup_e
 
     result = await coordinator._async_update_data()
 
-    assert result["path_accessible"] is False
+    assert result["path_available"] is False
     assert result["total_files"] == 0
     assert result["older_than_retention"] == 0
 
@@ -236,7 +240,8 @@ async def test_coordinator_race_condition_handling(
     test_files[0].unlink()
 
     # Run cleanup - should handle missing file gracefully
-    result = await coordinator.async_run_cleanup_now()
+    await coordinator.async_run_cleanup_now()
+    result = coordinator.data
 
     # Should delete remaining files and handle missing file gracefully
     assert result["deleted_last_run"] == 2
@@ -302,13 +307,15 @@ async def test_coordinator_performance_tracking(
         (media_dir / f"test_{i}.jpg").touch()
 
     # Test scan duration tracking
-    result = await coordinator.async_scan_now()
+    await coordinator.async_run_scan_now()
+    result = coordinator.data
     assert "last_scan_duration_ms" in result
     assert isinstance(result["last_scan_duration_ms"], float)
     assert result["last_scan_duration_ms"] >= 0
 
     # Test cleanup duration tracking
-    result = await coordinator.async_run_cleanup_now()
+    await coordinator.async_run_cleanup_now()
+    result = coordinator.data
     assert "last_cleanup_duration_ms" in result
     assert isinstance(result["last_cleanup_duration_ms"], float)
     assert result["last_cleanup_duration_ms"] >= 0
@@ -353,7 +360,8 @@ async def test_coordinator_permission_error_with_real_files(
         return original_unlink(self)
 
     with patch.object(Path, "unlink", mock_unlink):
-        result = await coordinator.async_run_cleanup_now()
+        await coordinator.async_run_cleanup_now()
+    result = coordinator.data
 
     # Should delete 2 out of 3 files (one failed with permission error)
     assert result["deleted_last_run"] == 2
@@ -401,7 +409,8 @@ async def test_coordinator_file_pattern_matching(
         old_time = time_module.time() - (8 * 24 * 60 * 60)
         os.utime(file_path, (old_time, old_time))
 
-    result = await coordinator.async_scan_now()
+    await coordinator.async_run_scan_now()
+    result = coordinator.data
 
     # Should only count JPG files
     assert result["total_files"] == 2  # Only 2 JPG files
@@ -445,7 +454,8 @@ async def test_coordinator_retention_days_boundary(
         old_time = now - (age_days * 24 * 60 * 60)
         os.utime(file_path, (old_time, old_time))
 
-    result = await coordinator.async_scan_now()
+    await coordinator.async_run_scan_now()
+    result = coordinator.data
 
     assert result["total_files"] == 4
     assert result["older_than_retention"] == 2  # Only 2 files older than 7 days
