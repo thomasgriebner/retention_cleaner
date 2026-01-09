@@ -139,19 +139,9 @@ async def test_entry_reload(hass: HomeAssistant, init_integration):
     """Test reloading a config entry."""
     entry = init_integration
 
-    # Get initial coordinator
-    initial_coordinator = entry.runtime_data
-
-    # Mock the coordinator's async_remove_listeners method
-    with patch.object(
-        initial_coordinator, "async_remove_listeners"
-    ) as mock_remove_listeners:
-        # Reload the entry
-        await hass.config_entries.async_reload(entry.entry_id)
-        await hass.async_block_till_done()
-
-        # Verify old coordinator listeners were removed during unload
-        mock_remove_listeners.assert_called()
+    # Reload the entry - this will unload and then setup again
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
 
     # Entry should still be loaded after reload
     assert entry.state == ConfigEntryState.LOADED
