@@ -78,9 +78,6 @@ async def test_coordinator_scan_with_real_files(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -134,9 +131,6 @@ async def test_coordinator_cleanup_dry_run_real_files(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -192,9 +186,6 @@ async def test_coordinator_cleanup_with_deletion_real_files(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -249,9 +240,6 @@ async def test_coordinator_max_deletes_limit_real_files(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -335,9 +323,6 @@ async def test_coordinator_race_condition_handling(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -366,9 +351,6 @@ async def test_coordinator_schedule_setup(hass: HomeAssistant, mock_setup_entry)
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -447,9 +429,6 @@ async def test_coordinator_performance_tracking(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -517,9 +496,6 @@ async def test_coordinator_permission_error_with_real_files(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -579,9 +555,6 @@ async def test_coordinator_file_pattern_matching(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -641,9 +614,6 @@ async def test_coordinator_retention_days_boundary(
     finally:
         # Clean up coordinator to avoid lingering timers
         await coordinator.async_shutdown()
-        # Force cancellation of any remaining timers
-        if hasattr(coordinator, "_debounced_refresh"):
-            coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
@@ -1178,7 +1148,7 @@ async def test_multiple_coordinator_instances(hass: HomeAssistant, tmp_path):
         # Run coordinators sequentially to avoid race conditions
         for coordinator in coordinators:
             # Initialize each coordinator first
-            await coordinator.async_config_entry_first_refresh()
+            await coordinator.async_refresh()
             await hass.async_block_till_done()
 
             await coordinator.async_run_cleanup_now()
@@ -1211,9 +1181,6 @@ async def test_multiple_coordinator_instances(hass: HomeAssistant, tmp_path):
         for coordinator in coordinators:
             with contextlib.suppress(Exception):
                 await coordinator.async_shutdown()
-                # Force cancellation of any remaining timers
-                if hasattr(coordinator, "_debounced_refresh"):
-                    coordinator._debounced_refresh.cancel()
         # Ensure all async tasks complete
         await hass.async_block_till_done()
 
