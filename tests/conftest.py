@@ -60,12 +60,27 @@ async def init_integration(hass, mock_setup_entry):
     """Set up the retention_cleaner integration."""
     mock_setup_entry.add_to_hass(hass)
 
-    # Actually setup the integration
-    assert await hass.config_entries.async_setup(mock_setup_entry.entry_id)
-    await hass.async_block_till_done()
+    # Mock the _scan_folder function to return valid test data
+    from custom_components.retention_cleaner.coordinator import ScanResult
 
-    # Return the config entry which now has runtime_data set
-    return hass.config_entries.async_get_entry(mock_setup_entry.entry_id)
+    mock_scan_result = ScanResult(
+        total_files=0, older_than_retention=0, path_available=True
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator._scan_folder",
+        return_value=mock_scan_result,
+    ):
+        # Actually setup the integration
+        assert await hass.config_entries.async_setup(mock_setup_entry.entry_id)
+        await hass.async_block_till_done()
+
+    # Verify runtime_data was set during setup
+    assert hasattr(mock_setup_entry, "runtime_data")
+    assert mock_setup_entry.runtime_data is not None
+
+    # Return the original entry which should now have runtime_data set
+    return mock_setup_entry
 
 
 @pytest.fixture
