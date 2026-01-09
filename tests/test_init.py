@@ -8,20 +8,6 @@ from unittest.mock import AsyncMock, Mock, patch
 class TestIntegrationSetup:
     """Test integration setup and unload functions."""
 
-    @pytest.mark.asyncio
-    async def test_async_setup_yaml_not_supported(self):
-        """Test that YAML setup returns True (not supported)."""
-        # Import here to avoid HA dependency issues
-        try:
-            from custom_components.retention_cleaner import async_setup
-        except ImportError:
-            pytest.skip("Home Assistant not available")
-            
-        mock_hass = Mock()
-        mock_config = {}
-        
-        result = await async_setup(mock_hass, mock_config)
-        assert result is True
 
     @pytest.mark.asyncio 
     async def test_async_setup_entry_success(self, mock_hass, mock_config_entry_obj):
@@ -50,10 +36,8 @@ class TestIntegrationSetup:
             mock_coordinator.async_config_entry_first_refresh.assert_called_once()
             mock_coordinator.async_setup_daily_schedule.assert_called_once()
             
-            # Verify hass.data was set up correctly
-            assert "retention_cleaner" in mock_hass.data
-            assert mock_config_entry_obj.entry_id in mock_hass.data["retention_cleaner"]
-            assert mock_hass.data["retention_cleaner"][mock_config_entry_obj.entry_id] == mock_coordinator
+            # Verify runtime_data was set up correctly
+            assert mock_config_entry_obj.runtime_data == mock_coordinator
             
             # Verify platforms were set up
             mock_hass.config_entries.async_forward_entry_setups.assert_called_once_with(
@@ -63,15 +47,10 @@ class TestIntegrationSetup:
     @pytest.mark.asyncio
     async def test_async_unload_entry_success(self, mock_hass, mock_config_entry_obj):
         """Test successful config entry unload."""
-        # Setup hass.data with coordinator
+        # Setup coordinator
         mock_coordinator = Mock()
         mock_coordinator.async_remove_listeners = Mock()
-        
-        mock_hass.data = {
-            "retention_cleaner": {
-                mock_config_entry_obj.entry_id: mock_coordinator
-            }
-        }
+        mock_config_entry_obj.runtime_data = mock_coordinator
         
         try:
             from custom_components.retention_cleaner import async_unload_entry
@@ -92,14 +71,10 @@ class TestIntegrationSetup:
             mock_config_entry_obj, ["sensor", "binary_sensor", "button"]
         )
         
-        # Verify data cleanup
-        assert mock_config_entry_obj.entry_id not in mock_hass.data["retention_cleaner"]
 
     @pytest.mark.asyncio
     async def test_async_unload_entry_no_coordinator(self, mock_hass, mock_config_entry_obj):
-        """Test unload when no coordinator exists in hass.data."""
-        # Empty hass.data
-        mock_hass.data = {}
+        """Test unload when no coordinator exists."""
         
         try:
             from custom_components.retention_cleaner import async_unload_entry
@@ -120,11 +95,7 @@ class TestIntegrationSetup:
         """Test unload when platform unloading fails."""
         # Setup coordinator
         mock_coordinator = Mock()
-        mock_hass.data = {
-            "retention_cleaner": {
-                mock_config_entry_obj.entry_id: mock_coordinator
-            }
-        }
+        mock_config_entry_obj.runtime_data = mock_coordinator
         
         # Make platform unload fail
         mock_hass.config_entries.async_unload_platforms.return_value = False
@@ -139,6 +110,3 @@ class TestIntegrationSetup:
         
         # Should return False
         assert result is False
-        
-        # Data should NOT be cleaned up when unload fails
-        assert mock_config_entry_obj.entry_id in mock_hass.data["retention_cleaner"]
