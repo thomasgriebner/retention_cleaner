@@ -665,7 +665,7 @@ async def test_daily_schedule_end_to_end(
             os.utime(test_file, (old_time, old_time))
 
         # Initialize coordinator data first
-        await coordinator.async_config_entry_first_refresh()
+        await coordinator.async_refresh()
         await hass.async_block_till_done()
 
         # Directly trigger cleanup instead of relying on schedule timing
@@ -1073,7 +1073,7 @@ async def test_concurrent_scan_and_cleanup(
             os.utime(test_file, (old_time, old_time))
 
         # Initialize coordinator first
-        await coordinator.async_config_entry_first_refresh()
+        await coordinator.async_refresh()
         await hass.async_block_till_done()
 
         # Verify initial scan worked
@@ -1242,7 +1242,7 @@ async def test_large_directory_performance(
         print(f"File creation took {file_creation_time:.2f} seconds")
 
         # Initialize coordinator first
-        await coordinator.async_config_entry_first_refresh()
+        await coordinator.async_refresh()
         await hass.async_block_till_done()
 
         scan_data = coordinator.data
