@@ -1,36 +1,102 @@
-# Quality Scale tracking for Retention Cleaner integration
-# https://developers.home-assistant.io/docs/core/integration-quality-scale/
-
 rules:
-  # ===== BRONZE TIER =====
-  # User can set up the integration
-  appropriate-library: done         # Using pathlib, asyncio - appropriate Python libraries
-  brands: done                      # Already in home-assistant/brands repository
-  common-modules: done              # Using HA common modules (coordinator, config_flow)
-  config-flow: done                 # Full ConfigFlow implementation
-  config-flow-test-coverage: todo   # Tests for config flow not yet implemented
-  dependency-transparency: done     # No external dependencies
-  docs-actions: done                # Actions documented (scan, cleanup buttons)
-  docs-high-level-description: done # Clear description in README
-  docs-installation-instructions: done # HACS installation documented
-  docs-removal-instructions: done   # Uninstall instructions in README
-  entity-event-setup: done          # Entities properly set up with events
-  entity-name-setup: done           # Entity names follow HA standards
-  entity-unique-id: done            # All entities have unique IDs
-  has-entity: done                  # Integration provides entities
-  runtime-data: done                # Using runtime data storage properly
-  
-  # ===== SILVER TIER =====
-  # Stable and polished user experience
-  action-exceptions: done           # Proper exception handling in actions
-  config-entry-unloading: done      # Clean unload implementation
-  docs-configuration-parameters: done # All config parameters documented
-  docs-installation-parameters: done  # Installation parameters documented
-  entity-unavailable: done          # Entities go unavailable when appropriate
-  integration-owner: exempt         # Single maintainer (exemption: solo project)
-  log-when-unavailable: done        # Proper logging when path unavailable
-  parallel-updates: done            # Coordinator handles parallel updates
-  reauthentication-flow: exempt     # Not applicable - local file system access
-  test-before-configure: todo       # Config flow tests not yet implemented
-  test-before-setup: todo           # Setup tests not yet implemented
-  unique-config-entry: done         # Prevents duplicate config entries
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: |
+      No actions defined, only button entities for scan/cleanup
+  appropriate-polling: done
+  brands: exempt
+  common-modules: done
+  config-flow-test-coverage: todo
+  config-flow: done
+  dependency-transparency: done
+  docs-actions:
+    status: done
+    comment: |
+      Button entities for scan and cleanup are documented
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: todo
+  test-before-setup: todo
+  unique-config-entry: done
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: |
+      No actions defined, button entities handle exceptions properly
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner:
+    status: exempt
+    comment: |
+      Single maintainer project
+  log-when-unavailable: done
+  parallel-updates:
+    status: done
+    comment: |
+      DataUpdateCoordinator handles updates, file operations use asyncio.to_thread
+  reauthentication-flow:
+    status: exempt
+    comment: |
+      Not applicable - local file system access only
+  test-coverage: todo
+  # Gold
+  devices: done
+  diagnostics: todo
+  discovery-update-info:
+    status: exempt
+    comment: |
+      No discovery mechanism - manual configuration only
+  discovery:
+    status: exempt
+    comment: |
+      No discovery mechanism - manual configuration only
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices:
+    status: exempt
+    comment: |
+      Not a device integration - file system operations
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: exempt
+    comment: |
+      Each config entry creates one virtual device
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default:
+    status: done
+    comment: |
+      Performance sensors are disabled by default
+  entity-translations: done
+  exception-translations: done
+  icon-translations:
+    status: exempt
+    comment: |
+      Using standard MDI icons
+  reconfiguration-flow: done
+  repair-issues: todo
+  stale-devices:
+    status: exempt
+    comment: |
+      Virtual devices removed when config entry removed
+  # Platinum
+  async-dependency:
+    status: exempt
+    comment: |
+      No external dependencies
+  inject-websession:
+    status: exempt
+    comment: |
+      No web sessions used - local file operations only
+  strict-typing: todo
