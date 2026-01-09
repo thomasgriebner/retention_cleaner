@@ -159,7 +159,7 @@ match error:
 # GOOD: Avoid duplicate calls
 if (size := file_stat.st_size) > 0:
     total_bytes += size
-    
+
 # GOOD: Inline validation
 if not (path := config.get("base_path")):
     raise ValueError("base_path is required")
@@ -221,10 +221,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up retention cleaner from a config entry."""
     coordinator = RetentionCleanerCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
-    
+
     # Store in runtime_data instead of hass.data
     entry.runtime_data = RetentionCleanerData(coordinator=coordinator)
-    
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -462,7 +462,7 @@ Is this a problem?
    - Use present tense ("add" not "added")
    - Keep commit body concise (2-3 lines max if needed)
    - Same applies to PR descriptions and changelog entries
-6. **Branch Policy**: 
+6. **Branch Policy**:
    - Always check current branch before making changes
    - Never commit directly to main/master
    - If already on a feature branch, continue using it unless explicitly told to create a new branch
@@ -761,7 +761,7 @@ repos:
     rev: v1.8.0
     hooks:
       - id: mypy
-        additional_dependencies: 
+        additional_dependencies:
           - homeassistant
           - types-python-dateutil
         args: [--strict, --ignore-missing-imports]
@@ -817,7 +817,7 @@ target-version = "py313"
 line-length = 88
 select = [
     "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings  
+    "W",   # pycodestyle warnings
     "F",   # pyflakes
     "I",   # isort
     "B",   # bugbear
@@ -902,20 +902,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          
+
       - name: Install dependencies
         run: |
           pip install -U pip
           pip install pre-commit
-          
+
       - name: Run pre-commit
         run: pre-commit run --all-files
-        
+
       - name: Run tests with coverage
         run: |
           pip install pytest pytest-cov
@@ -1034,16 +1034,16 @@ async def coordinator(hass: HomeAssistant, config_entry: ConfigEntry):
 async def test_dry_run_mode_no_deletion(coordinator):
     """Test that dry-run mode doesn't delete files."""
     coordinator.dry_run = True
-    
+
     with patch("pathlib.Path.glob") as mock_glob, \
          patch("pathlib.Path.unlink") as mock_unlink:
-        
+
         # Setup mock files
         mock_files = [Mock(spec=Path) for _ in range(5)]
         mock_glob.return_value = mock_files
-        
+
         result = await coordinator.async_run_cleanup_now()
-        
+
         # No files should be deleted
         mock_unlink.assert_not_called()
         assert result["deleted_last_run"] == 0
@@ -1072,9 +1072,9 @@ async def test_race_condition_handling(coordinator):
     """Test graceful handling of race conditions."""
     with patch("pathlib.Path.unlink") as mock_unlink:
         mock_unlink.side_effect = FileNotFoundError()
-        
+
         result = await coordinator._cleanup_folder()
-        
+
         # Should count as deleted (goal achieved)
         assert result["deleted_last_run"] > 0
 
@@ -1082,9 +1082,9 @@ async def test_permission_error_handling(coordinator):
     """Test handling of permission errors."""
     with patch("pathlib.Path.unlink") as mock_unlink:
         mock_unlink.side_effect = PermissionError()
-        
+
         result = await coordinator._cleanup_folder()
-        
+
         # Should log warning but continue
         assert "error" not in result
 ```
@@ -1120,17 +1120,17 @@ async def test_blocking_operations_in_executor(coordinator):
 async def test_large_directory_performance(coordinator, tmp_path):
     """Test performance with large number of files."""
     import time
-    
+
     # Create 10000 test files
     for i in range(10000):
         (tmp_path / f"file_{i}.txt").touch()
-    
+
     coordinator.base_path = str(tmp_path)
-    
+
     start = time.time()
     result = await coordinator._scan_folder()
     duration = time.time() - start
-    
+
     assert duration < 5.0  # Should complete within 5 seconds
     assert result["total_files"] == 10000
 ```
@@ -1149,13 +1149,13 @@ async def test_full_setup_flow(hass):
         },
     )
     entry.add_to_hass(hass)
-    
+
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    
+
     # Check coordinator is created
     assert entry.runtime_data.coordinator is not None
-    
+
     # Check entities are created
     state = hass.states.get("sensor.test_total_files")
     assert state is not None
@@ -1356,15 +1356,15 @@ def scan_folder(
     retention_days: int,
 ) -> dict[str, Any]:
     """Scan folder for files matching pattern.
-    
+
     Args:
         base_path: Base directory to scan.
         pattern: Glob pattern for file matching.
         retention_days: Days to retain files.
-        
+
     Returns:
         Dictionary with scan results including counts and timestamps.
-        
+
     Raises:
         PermissionError: If directory cannot be accessed.
         ValueError: If path is invalid.

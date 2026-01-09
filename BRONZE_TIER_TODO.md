@@ -14,7 +14,7 @@ Basierend auf Quality-Agent Analyse vom 2025-01-09.
 
 **Fehlende Tests:**
 - Happy Path config flow completion
-- Error handling in config flow UI  
+- Error handling in config flow UI
 - Uniqueness validation (duplicate entries prevention)
 - Config flow recovery from validation errors
 - Options flow (reconfiguration) testing
@@ -44,7 +44,7 @@ async def _test_path_access(self, base_path: str) -> None:
         # Test basic access
         await self.hass.async_add_executor_job(path.iterdir)
     except PermissionError:
-        raise vol.Invalid("path_no_permission") 
+        raise vol.Invalid("path_no_permission")
     except OSError:
         raise vol.Invalid("path_not_accessible")
 ```
@@ -53,7 +53,7 @@ async def _test_path_access(self, base_path: str) -> None:
 ```json
 "error": {
     "path_does_not_exist": "The specified path does not exist",
-    "path_not_directory": "The specified path is not a directory", 
+    "path_not_directory": "The specified path is not a directory",
     "path_no_permission": "No permission to access the path",
     "path_not_accessible": "Path is not accessible"
 }
@@ -69,7 +69,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     base_path = entry.data.get("base_path")
-    
+
     # Test path accessibility before setup
     try:
         path = Path(base_path)
@@ -81,7 +81,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(f"No permission to access path: {base_path}") from err
     except OSError as err:
         raise ConfigEntryNotReady(f"Cannot access path: {base_path}") from err
-    
+
     # Continue with existing setup...
 ```
 
@@ -98,7 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 # In __init__.py
 from dataclasses import dataclass
 
-@dataclass 
+@dataclass
 class RetentionCleanerData:
     coordinator: RetentionCleanerCoordinator
 
@@ -113,7 +113,7 @@ async def async_setup_entry(...):
 
 **Files to update:**
 - `__init__.py` - Replace hass.data with entry.runtime_data
-- `sensor.py` - Update coordinator access 
+- `sensor.py` - Update coordinator access
 - `button.py` - Update coordinator access
 - `binary_sensor.py` - Update coordinator access
 
@@ -132,12 +132,12 @@ async def async_setup_entry(...):
 1. **config-flow-test-coverage** (Höchste Priorität)
    - Größte Lücke für Bronze Tier
    - Erfordert echtes HA Testing Framework
-   
+
 2. **test-before-configure** (Sicherheit)
    - Wichtig für File-Delete Integration
    - Verbessert User Experience
-   
-3. **runtime-data** (Best Practice) 
+
+3. **runtime-data** (Best Practice)
    - Moderne HA Architektur
    - Breaking Change - vorsichtig implementieren
 

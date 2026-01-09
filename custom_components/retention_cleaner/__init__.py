@@ -52,7 +52,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading Retention Cleaner for entry: %s", entry.title)
 
-    coordinator: RetentionCleanerCoordinator | None = getattr(entry, 'runtime_data', None)
+    coordinator: RetentionCleanerCoordinator | None = getattr(
+        entry, "runtime_data", None
+    )
     if coordinator:
         coordinator.async_remove_listeners()
 
