@@ -76,7 +76,7 @@ async def test_sensor_updates_from_coordinator(hass: HomeAssistant, init_integra
     assert state.state == "102400"
 
     state = hass.states.get("sensor.test_cleanup_last_scan")
-    assert state.state == "2024-01-01T12:00:00"
+    assert state.state == "2024-01-01T12:00:00+00:00"  # ISO format with UTC timezone
 
 
 async def test_performance_sensors(hass: HomeAssistant, init_integration):
