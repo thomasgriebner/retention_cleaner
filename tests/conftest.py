@@ -29,7 +29,7 @@ def mock_setup_entry():
             "retention_days": 7,
             "dry_run": True,
             "max_deletes": 100,
-            "schedule_time": "02:00",
+            "run_at": "02:00",
         },
         entry_id="test_entry_123",
     )
@@ -49,7 +49,7 @@ def mock_setup_entry_no_dry_run():
             "retention_days": 3,
             "dry_run": False,
             "max_deletes": 50,
-            "schedule_time": "04:00",
+            "run_at": "04:00",
         },
         entry_id="test_entry_456",
     )

@@ -13,7 +13,7 @@ from custom_components.retention_cleaner.const import (
     CONF_MAX_DELETES,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
-    CONF_SCHEDULE_TIME,
+    CONF_RUN_AT,
     DOMAIN,
 )
 
@@ -39,7 +39,7 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
                 CONF_RETENTION_DAYS: 7,
                 CONF_DRY_RUN: True,
                 CONF_MAX_DELETES: 100,
-                CONF_SCHEDULE_TIME: "02:00",
+                CONF_RUN_AT: "02:00",
             },
         )
         await hass.async_block_till_done()
@@ -52,7 +52,7 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
         CONF_RETENTION_DAYS: 7,
         CONF_DRY_RUN: True,
         CONF_MAX_DELETES: 100,
-        CONF_SCHEDULE_TIME: "02:00",
+        CONF_RUN_AT: "02:00",
     }
     assert len(mock_setup_entry.mock_calls) == 1
 
@@ -72,7 +72,7 @@ async def test_form_invalid_path_not_media(hass: HomeAssistant) -> None:
             CONF_RETENTION_DAYS: 7,
             CONF_DRY_RUN: True,
             CONF_MAX_DELETES: 100,
-            CONF_SCHEDULE_TIME: "02:00",
+            CONF_RUN_AT: "02:00",
         },
     )
 
@@ -96,7 +96,7 @@ async def test_form_dangerous_pattern(hass: HomeAssistant) -> None:
             CONF_RETENTION_DAYS: 7,
             CONF_DRY_RUN: True,
             CONF_MAX_DELETES: 100,
-            CONF_SCHEDULE_TIME: "02:00",
+            CONF_RUN_AT: "02:00",
         },
     )
 
@@ -120,7 +120,7 @@ async def test_form_invalid_pattern_syntax(hass: HomeAssistant) -> None:
             CONF_RETENTION_DAYS: 7,
             CONF_DRY_RUN: True,
             CONF_MAX_DELETES: 100,
-            CONF_SCHEDULE_TIME: "02:00",
+            CONF_RUN_AT: "02:00",
         },
     )
 
@@ -144,12 +144,12 @@ async def test_form_invalid_time_format(hass: HomeAssistant) -> None:
             CONF_RETENTION_DAYS: 7,
             CONF_DRY_RUN: True,
             CONF_MAX_DELETES: 100,
-            CONF_SCHEDULE_TIME: "25:00",  # Invalid hour
+            CONF_RUN_AT: "25:00",  # Invalid hour
         },
     )
 
     assert result2["type"] == FlowResultType.FORM
-    assert result2["errors"] == {CONF_SCHEDULE_TIME: "schedule_time_invalid"}
+    assert result2["errors"] == {CONF_RUN_AT: "run_at_invalid"}
 
 
 async def test_form_negative_retention_days(hass: HomeAssistant) -> None:
@@ -167,7 +167,7 @@ async def test_form_negative_retention_days(hass: HomeAssistant) -> None:
             CONF_RETENTION_DAYS: -1,  # Negative value
             CONF_DRY_RUN: True,
             CONF_MAX_DELETES: 100,
-            CONF_SCHEDULE_TIME: "02:00",
+            CONF_RUN_AT: "02:00",
         },
     )
 
@@ -193,7 +193,7 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
             CONF_RETENTION_DAYS: 14,
             CONF_DRY_RUN: False,
             CONF_MAX_DELETES: 200,
-            CONF_SCHEDULE_TIME: "03:00",
+            CONF_RUN_AT: "03:00",
         },
     )
 
@@ -203,7 +203,7 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
         CONF_RETENTION_DAYS: 14,
         CONF_DRY_RUN: False,
         CONF_MAX_DELETES: 200,
-        CONF_SCHEDULE_TIME: "03:00",
+        CONF_RUN_AT: "03:00",
     }
 
 
@@ -226,7 +226,7 @@ async def test_path_trailing_slash_removed(hass: HomeAssistant) -> None:
                 CONF_RETENTION_DAYS: 7,
                 CONF_DRY_RUN: True,
                 CONF_MAX_DELETES: 100,
-                CONF_SCHEDULE_TIME: "02:00",
+                CONF_RUN_AT: "02:00",
             },
         )
 
@@ -254,7 +254,7 @@ async def test_duplicate_entry_prevention(
             CONF_RETENTION_DAYS: 7,
             CONF_DRY_RUN: True,
             CONF_MAX_DELETES: 100,
-            CONF_SCHEDULE_TIME: "02:00",
+            CONF_RUN_AT: "02:00",
         },
     )
 

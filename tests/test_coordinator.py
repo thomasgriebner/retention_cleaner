@@ -21,7 +21,7 @@ async def test_coordinator_setup(hass: HomeAssistant, mock_setup_entry):
     assert coordinator.retention_days == 7
     assert coordinator.dry_run is True
     assert coordinator.max_deletes == 100
-    assert coordinator.schedule_time == "02:00"
+    assert str(coordinator.run_at) == "02:00:00"  # run_at returns a time object
     assert coordinator.name == "Test Cleanup"
 
 
