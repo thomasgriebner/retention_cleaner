@@ -1,6 +1,6 @@
 """Test retention_cleaner integration setup and teardown."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -17,43 +17,37 @@ async def test_setup_entry_success(hass: HomeAssistant, mock_setup_entry):
     """Test successful setup of the integration."""
     mock_setup_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
-    ) as mock_coordinator_class:
-        mock_coordinator = mock_coordinator_class.return_value
-        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
-        mock_coordinator.async_setup_daily_schedule = AsyncMock()
-
+    # Mock filesystem operations but let real coordinator run
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
         result = await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
 
     assert result is True
     assert mock_setup_entry.state == ConfigEntryState.LOADED
 
-    # Check coordinator was initialized
-    mock_coordinator_class.assert_called_once_with(hass, mock_setup_entry)
-    mock_coordinator.async_config_entry_first_refresh.assert_called_once()
-    mock_coordinator.async_setup_daily_schedule.assert_called_once()
-
-    # Check coordinator is stored directly in runtime data
+    # Check coordinator is stored in runtime data
     assert mock_setup_entry.runtime_data is not None
-    assert mock_setup_entry.runtime_data == mock_coordinator
+    # Should be actual coordinator instance
+    assert hasattr(mock_setup_entry.runtime_data, "base_path")
+    assert hasattr(mock_setup_entry.runtime_data, "async_config_entry_first_refresh")
 
 
 async def test_setup_entry_failure_first_refresh(hass: HomeAssistant, mock_setup_entry):
     """Test setup failure during first coordinator refresh."""
     mock_setup_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
-    ) as mock_coordinator_class:
-        mock_coordinator = mock_coordinator_class.return_value
-        # Simulate refresh failure
-        mock_coordinator.async_config_entry_first_refresh = AsyncMock(
-            side_effect=Exception("Connection error")
-        )
-
-        with pytest.raises(Exception, match="Connection error"):
-            await async_setup_entry(hass, mock_setup_entry)
+    # Mock filesystem to cause a scan failure
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", side_effect=OSError("Permission denied")),
+        pytest.raises(OSError, match="Permission denied"),
+    ):
+        await async_setup_entry(hass, mock_setup_entry)
 
 
 async def test_unload_entry(hass: HomeAssistant, init_integration):
@@ -81,20 +75,21 @@ async def test_setup_multiple_entries(
     mock_setup_entry.add_to_hass(hass)
     mock_setup_entry_no_dry_run.add_to_hass(hass)
 
-    with patch(
-        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
-    ) as mock_coordinator_class:
-        mock_coordinator = mock_coordinator_class.return_value
-        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
-        mock_coordinator.async_setup_daily_schedule = AsyncMock()
-
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
         # Setup both entries
         result1 = await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
         result2 = await async_setup_entry(hass, mock_setup_entry_no_dry_run)
+        await hass.async_block_till_done()
 
     assert result1 is True
     assert result2 is True
-    assert mock_coordinator_class.call_count == 2
+    assert mock_setup_entry.runtime_data is not None
+    assert mock_setup_entry_no_dry_run.runtime_data is not None
 
 
 async def test_platforms_setup(hass: HomeAssistant, mock_setup_entry):
@@ -102,18 +97,15 @@ async def test_platforms_setup(hass: HomeAssistant, mock_setup_entry):
     mock_setup_entry.add_to_hass(hass)
 
     with (
-        patch(
-            "custom_components.retention_cleaner.RetentionCleanerCoordinator"
-        ) as mock_coordinator_class,
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups"
         ) as mock_forward_setups,
     ):
-        mock_coordinator = mock_coordinator_class.return_value
-        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
-        mock_coordinator.async_setup_daily_schedule = AsyncMock()
-
         await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
 
         # Verify all platforms are forwarded for setup
         mock_forward_setups.assert_called_once_with(mock_setup_entry, PLATFORMS)
@@ -145,48 +137,48 @@ async def test_coordinator_initialization_params(hass: HomeAssistant, mock_setup
     """Test coordinator is initialized with correct parameters."""
     mock_setup_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
-    ) as mock_coordinator_class:
-        mock_coordinator = mock_coordinator_class.return_value
-        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
-        mock_coordinator.async_setup_daily_schedule = AsyncMock()
-
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
         await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
 
-        # Verify coordinator was initialized with correct params
-        mock_coordinator_class.assert_called_once_with(hass, mock_setup_entry)
+        # Verify coordinator was initialized correctly
+        coordinator = mock_setup_entry.runtime_data
+        assert coordinator.base_path == mock_setup_entry.data["base_path"]
+        assert coordinator.pattern == mock_setup_entry.data["pattern"]
 
 
 async def test_runtime_data_structure(hass: HomeAssistant, mock_setup_entry):
     """Test that runtime data is properly structured."""
-    # Runtime data should be the coordinator directly
-    with patch(
-        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
-    ) as mock_coordinator_class:
-        mock_coordinator = mock_coordinator_class.return_value
-        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
-        mock_coordinator.async_setup_daily_schedule = AsyncMock()
+    mock_setup_entry.add_to_hass(hass)
 
-        mock_setup_entry.add_to_hass(hass)
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
         await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
 
         # Runtime data should be the coordinator itself
-        assert mock_setup_entry.runtime_data == mock_coordinator
+        assert mock_setup_entry.runtime_data is not None
+        assert hasattr(mock_setup_entry.runtime_data, "base_path")
 
 
 async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry):
     """Test that options updates trigger coordinator update."""
     mock_setup_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.retention_cleaner.RetentionCleanerCoordinator"
-    ) as mock_coordinator_class:
-        mock_coordinator = mock_coordinator_class.return_value
-        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
-        mock_coordinator.async_setup_daily_schedule = AsyncMock()
-
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
         await async_setup_entry(hass, mock_setup_entry)
+        await hass.async_block_till_done()
 
         # Update options
         hass.config_entries.async_update_entry(
@@ -194,5 +186,5 @@ async def test_setup_entry_updates_options(hass: HomeAssistant, mock_setup_entry
         )
         await hass.async_block_till_done()
 
-        # Coordinator should handle the options update
-        assert mock_coordinator_class.called
+        # Coordinator should still be accessible
+        assert mock_setup_entry.runtime_data is not None
