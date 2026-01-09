@@ -310,14 +310,14 @@ async def test_coordinator_performance_tracking(
     await coordinator.async_run_scan_now()
     result = coordinator.data
     assert "last_scan_duration_ms" in result
-    assert isinstance(result["last_scan_duration_ms"], float)
+    assert isinstance(result["last_scan_duration_ms"], int)
     assert result["last_scan_duration_ms"] >= 0
 
     # Test cleanup duration tracking
     await coordinator.async_run_cleanup_now()
     result = coordinator.data
     assert "last_cleanup_duration_ms" in result
-    assert isinstance(result["last_cleanup_duration_ms"], float)
+    assert isinstance(result["last_cleanup_duration_ms"], int)
     assert result["last_cleanup_duration_ms"] >= 0
 
 
