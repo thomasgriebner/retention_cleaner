@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 
-import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
 
 from .const import DOMAIN
 from .coordinator import RetentionCleanerCoordinator
@@ -26,9 +26,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Retention Cleaner from a config entry."""
     _LOGGER.info(
         "Setting up Retention Cleaner for path: %s",
-        entry.data.get("base_path", "unknown")
+        entry.data.get("base_path", "unknown"),
     )
-    
+
     coordinator = RetentionCleanerCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
@@ -39,10 +39,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Daily scheduled cleanup (based on run_at from config)
     await coordinator.async_setup_daily_schedule()
-    
+
     _LOGGER.debug(
         "Retention Cleaner setup complete for entry: %s (platforms: %s)",
-        entry.title, PLATFORMS
+        entry.title,
+        PLATFORMS,
     )
 
     return True
@@ -51,8 +52,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading Retention Cleaner for entry: %s", entry.title)
-    
-    coordinator: RetentionCleanerCoordinator | None = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+
+    coordinator: RetentionCleanerCoordinator | None = hass.data.get(DOMAIN, {}).get(
+        entry.entry_id
+    )
     if coordinator:
         coordinator.async_remove_listeners()
 

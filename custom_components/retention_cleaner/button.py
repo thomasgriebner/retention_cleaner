@@ -55,7 +55,9 @@ class _BaseRetentionCleanerButton(
 
 
 class RetentionCleanerScanNowButton(_BaseRetentionCleanerButton):
-    def __init__(self, coordinator: RetentionCleanerCoordinator, entry: ConfigEntry) -> None:
+    def __init__(
+        self, coordinator: RetentionCleanerCoordinator, entry: ConfigEntry
+    ) -> None:
         super().__init__(coordinator, entry, "scan_now", "Scan now")
 
     async def async_press(self) -> None:
@@ -64,7 +66,9 @@ class RetentionCleanerScanNowButton(_BaseRetentionCleanerButton):
 
 
 class RetentionCleanerCleanupNowButton(_BaseRetentionCleanerButton):
-    def __init__(self, coordinator: RetentionCleanerCoordinator, entry: ConfigEntry) -> None:
+    def __init__(
+        self, coordinator: RetentionCleanerCoordinator, entry: ConfigEntry
+    ) -> None:
         super().__init__(coordinator, entry, "cleanup_now", "Run cleanup")
 
     async def async_press(self) -> None:

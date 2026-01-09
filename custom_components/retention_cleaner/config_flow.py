@@ -2,26 +2,26 @@ from __future__ import annotations
 
 import logging
 import re
-import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
+import voluptuous as vol
 
 _LOGGER = logging.getLogger(__name__)
 
 from .const import (
-    DOMAIN,
     CONF_BASE_PATH,
+    CONF_DRY_RUN,
+    CONF_MAX_DELETES,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
-    CONF_DRY_RUN,
-    CONF_MAX_DELETES,
+    DEFAULT_DRY_RUN,
+    DEFAULT_MAX_DELETES,
     DEFAULT_PATTERN,
     DEFAULT_RETENTION_DAYS,
     DEFAULT_RUN_AT,
-    DEFAULT_DRY_RUN,
-    DEFAULT_MAX_DELETES,
+    DOMAIN,
 )
 
 TIME_RE = re.compile(r"^\d{2}:\d{2}$")
@@ -51,27 +51,27 @@ def _validate_run_at(value: str) -> str:
 def _validate_pattern(value: str) -> str:
     """Validate glob pattern and warn about dangerous patterns."""
     value = (value or "*").strip()
-    
+
     # Check for EXTREMELY dangerous patterns that match ALL files
     EXTREMELY_DANGEROUS = ["*", "**/*"]
     if value in EXTREMELY_DANGEROUS:
         _LOGGER.warning("Extremely dangerous pattern '%s' matches ALL files", value)
         raise vol.Invalid("pattern_too_broad")
-    
+
     # Check for invalid syntax
     if "***" in value:
         _LOGGER.warning("Invalid pattern syntax: triple asterisk in '%s'", value)
         raise vol.Invalid("pattern_invalid_syntax")
-    
+
     # Check for unclosed brackets/braces
     if value.count("{") != value.count("}"):
         _LOGGER.warning("Invalid pattern: unclosed braces in '%s'", value)
         raise vol.Invalid("pattern_invalid_syntax")
-    
+
     if value.count("[") != value.count("]"):
         _LOGGER.warning("Invalid pattern: unclosed brackets in '%s'", value)
         raise vol.Invalid("pattern_invalid_syntax")
-    
+
     return value
 
 
@@ -86,29 +86,42 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 base_path = _validate_base_path(user_input[CONF_BASE_PATH])
-                pattern = _validate_pattern(user_input.get(CONF_PATTERN, DEFAULT_PATTERN))
+                pattern = _validate_pattern(
+                    user_input.get(CONF_PATTERN, DEFAULT_PATTERN)
+                )
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
 
                 data = {
                     CONF_BASE_PATH: base_path,
                     CONF_PATTERN: pattern,
-                    CONF_RETENTION_DAYS: int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
+                    CONF_RETENTION_DAYS: int(
+                        user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
+                    ),
                     CONF_RUN_AT: run_at,
                     CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
-                    CONF_MAX_DELETES: int(user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)),
+                    CONF_MAX_DELETES: int(
+                        user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)
+                    ),
                 }
 
                 title = base_path.split("/")[-1] or base_path
                 _LOGGER.info(
                     "Creating config entry for path: %s (pattern: %s, retention: %d days)",
-                    base_path, data[CONF_PATTERN], data[CONF_RETENTION_DAYS]
+                    base_path,
+                    data[CONF_PATTERN],
+                    data[CONF_RETENTION_DAYS],
                 )
                 return self.async_create_entry(title=title, data=data)
 
             except vol.Invalid as e:
                 # Map our validation codes to translation keys
                 error_key = str(e)
-                if error_key in ("base_path_not_media", "run_at_invalid", "pattern_too_broad", "pattern_invalid_syntax"):
+                if error_key in (
+                    "base_path_not_media",
+                    "run_at_invalid",
+                    "pattern_too_broad",
+                    "pattern_invalid_syntax",
+                ):
                     errors["base"] = error_key
                 else:
                     _LOGGER.error("Unexpected validation error: %s", str(e))
@@ -118,10 +131,14 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_BASE_PATH): str,
                 vol.Optional(CONF_PATTERN, default=DEFAULT_PATTERN): str,
-                vol.Optional(CONF_RETENTION_DAYS, default=DEFAULT_RETENTION_DAYS): vol.Coerce(int),
+                vol.Optional(
+                    CONF_RETENTION_DAYS, default=DEFAULT_RETENTION_DAYS
+                ): vol.Coerce(int),
                 vol.Optional(CONF_RUN_AT, default=DEFAULT_RUN_AT): str,
                 vol.Optional(CONF_DRY_RUN, default=DEFAULT_DRY_RUN): bool,
-                vol.Optional(CONF_MAX_DELETES, default=DEFAULT_MAX_DELETES): vol.Coerce(int),
+                vol.Optional(CONF_MAX_DELETES, default=DEFAULT_MAX_DELETES): vol.Coerce(
+                    int
+                ),
             }
         )
 
@@ -147,41 +164,72 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             try:
                 base_path = _validate_base_path(user_input[CONF_BASE_PATH])
-                pattern = _validate_pattern(user_input.get(CONF_PATTERN, DEFAULT_PATTERN))
+                pattern = _validate_pattern(
+                    user_input.get(CONF_PATTERN, DEFAULT_PATTERN)
+                )
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
 
                 _LOGGER.info(
                     "Updating config for path: %s (pattern: %s, retention: %d days)",
-                    base_path, pattern, int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS))
+                    base_path,
+                    pattern,
+                    int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
                 )
                 return self.async_create_entry(
                     title="",
                     data={
                         CONF_BASE_PATH: base_path,
                         CONF_PATTERN: pattern,
-                        CONF_RETENTION_DAYS: int(user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)),
+                        CONF_RETENTION_DAYS: int(
+                            user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
+                        ),
                         CONF_RUN_AT: run_at,
-                        CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
-                        CONF_MAX_DELETES: int(user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)),
+                        CONF_DRY_RUN: bool(
+                            user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)
+                        ),
+                        CONF_MAX_DELETES: int(
+                            user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)
+                        ),
                     },
                 )
 
             except vol.Invalid as e:
                 error_key = str(e)
-                if error_key in ("base_path_not_media", "run_at_invalid", "pattern_too_broad", "pattern_invalid_syntax"):
+                if error_key in (
+                    "base_path_not_media",
+                    "run_at_invalid",
+                    "pattern_too_broad",
+                    "pattern_invalid_syntax",
+                ):
                     errors["base"] = error_key
                 else:
-                    _LOGGER.error("Unexpected validation error in options flow: %s", str(e))
+                    _LOGGER.error(
+                        "Unexpected validation error in options flow: %s", str(e)
+                    )
                     errors["base"] = "unknown"
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_BASE_PATH, default=current.get(CONF_BASE_PATH, "")): str,
-                vol.Optional(CONF_PATTERN, default=current.get(CONF_PATTERN, DEFAULT_PATTERN)): str,
-                vol.Optional(CONF_RETENTION_DAYS, default=current.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)): vol.Coerce(int),
-                vol.Optional(CONF_RUN_AT, default=current.get(CONF_RUN_AT, DEFAULT_RUN_AT)): str,
-                vol.Optional(CONF_DRY_RUN, default=current.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)): bool,
-                vol.Optional(CONF_MAX_DELETES, default=current.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)): vol.Coerce(int),
+                vol.Required(
+                    CONF_BASE_PATH, default=current.get(CONF_BASE_PATH, "")
+                ): str,
+                vol.Optional(
+                    CONF_PATTERN, default=current.get(CONF_PATTERN, DEFAULT_PATTERN)
+                ): str,
+                vol.Optional(
+                    CONF_RETENTION_DAYS,
+                    default=current.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS),
+                ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_RUN_AT, default=current.get(CONF_RUN_AT, DEFAULT_RUN_AT)
+                ): str,
+                vol.Optional(
+                    CONF_DRY_RUN, default=current.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)
+                ): bool,
+                vol.Optional(
+                    CONF_MAX_DELETES,
+                    default=current.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES),
+                ): vol.Coerce(int),
             }
         )
 
