@@ -1555,7 +1555,10 @@ def test_scan_handles_filesystem_errors():
     """
     from custom_components.retention_cleaner.coordinator import _scan_folder
 
-    with patch("pathlib.Path") as mock_path_class:
+    # Must patch Path where it's imported, not where it's defined
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
         # Setup mock to raise exception
         mock_base = Mock()
         mock_path_class.return_value = mock_base
@@ -1581,7 +1584,10 @@ def test_scan_permission_denied():
     """
     from custom_components.retention_cleaner.coordinator import _scan_folder
 
-    with patch("pathlib.Path") as mock_path_class:
+    # Must patch Path where it's imported, not where it's defined
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
         # Setup mock to raise PermissionError
         mock_base = Mock()
         mock_path_class.return_value = mock_base
