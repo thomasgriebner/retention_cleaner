@@ -1,6 +1,6 @@
 """Test retention_cleaner binary sensor entities."""
 
-from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
@@ -132,9 +132,10 @@ async def test_binary_sensor_missing_data(hass: HomeAssistant, init_integration)
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    # Should handle missing data without errors (default to OFF/False)
+    # Should handle missing data without errors (return None/unknown when no restored data)
     state = hass.states.get("binary_sensor.test_cleanup_path_available")
-    assert state.state == STATE_OFF  # Default when data missing
+    # With RestoreEntity, missing data and no restored state returns None -> "unknown"
+    assert state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]
 
 
 async def test_binary_sensor_entity_category(hass: HomeAssistant, init_integration):
