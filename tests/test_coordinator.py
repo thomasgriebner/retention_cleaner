@@ -1506,82 +1506,110 @@ async def test_scheduler_callback_triggers_cleanup(
         await hass.async_block_till_done()
 
 
-async def test_general_exception_handling_in_async_operations(
-    hass: HomeAssistant, init_integration
+async def test_cleanup_handles_filesystem_errors(
+    hass: HomeAssistant, init_integration_no_glob_mock
 ):
-    """Test general exception handling in both async_run_scan_now and async_run_cleanup_now.
+    """Test that cleanup operations properly handle filesystem errors.
 
-    Tests real code paths by mocking only filesystem operations.
     Coverage targets:
-    - Lines 213-215 in _scan_folder (general exception handling)
     - Lines 377-379 in _cleanup_folder (general exception handling)
     - Lines 620-623 in async_run_cleanup_now (exception conversion)
-    - Lines 680-681 in _async_update_data (exception conversion)
     """
-    config_entry = init_integration
+    from tests.conftest import verify_cleanup_exception_handling
+
+    config_entry = init_integration_no_glob_mock
     coordinator = config_entry.runtime_data
 
     try:
-        # Test 1: Real _cleanup_folder with filesystem error
-        # Override the fixture's Path.glob mock with our exception-raising mock
-        with patch(
-            "pathlib.Path.glob", side_effect=ValueError("Real filesystem error")
-        ):
-            with pytest.raises(UpdateFailed) as exc_info:
-                await coordinator.async_run_cleanup_now()
-
-            assert "Cleanup failed:" in str(exc_info.value)
-            assert "Real filesystem error" in str(exc_info.value)
-
-        # Test 2: Real _scan_folder with filesystem error
-        # Override the fixture's Path.glob mock with our exception-raising mock
-        with patch(
-            "pathlib.Path.glob", side_effect=ValueError("Real scan filesystem error")
-        ):
-            with pytest.raises(UpdateFailed) as exc_info:
-                await coordinator.async_run_scan_now()
-
-            assert "Scan failed:" in str(exc_info.value)
-            assert "Real scan filesystem error" in str(exc_info.value)
+        # Test various filesystem errors
+        exc_info = await verify_cleanup_exception_handling(
+            coordinator, ValueError("Filesystem error during cleanup")
+        )
+        assert "Filesystem error during cleanup" in str(exc_info.value)
 
     finally:
         await coordinator.async_shutdown()
         await hass.async_block_till_done()
 
 
-async def test_directory_permission_errors_and_unexpected_exceptions(
-    hass: HomeAssistant, init_integration
+async def test_scan_handles_filesystem_errors(
+    hass: HomeAssistant, init_integration_no_glob_mock
 ):
-    """Test directory-level permission errors and unexpected exceptions in both scan and cleanup.
+    """Test that scan operations properly handle filesystem errors.
 
     Coverage targets:
-    - Lines 213-215 in _scan_folder (permission error on directory)
-    - Lines 372-373 in _cleanup_folder (permission error on directory)
-    - Lines 377-379 in _cleanup_folder (unexpected exception)
+    - Lines 213-215 in _scan_folder (general exception handling)
+    - Lines 680-681 in _async_update_data (exception conversion)
     """
-    config_entry = init_integration
+    from tests.conftest import verify_scan_exception_handling
+
+    config_entry = init_integration_no_glob_mock
     coordinator = config_entry.runtime_data
 
     try:
-        # Test scan directory permission error
-        # Override the fixture's Path.glob mock with our permission error mock
-        with (
-            patch(
-                "pathlib.Path.glob", side_effect=PermissionError("Permission denied")
-            ),
-            pytest.raises(UpdateFailed, match="Permission denied accessing"),
-        ):
-            await coordinator.async_run_scan_now()
+        # Test various filesystem errors
+        exc_info = await verify_scan_exception_handling(
+            coordinator, ValueError("Filesystem error during scan")
+        )
+        assert "Filesystem error during scan" in str(exc_info.value)
 
-        # Test cleanup directory permission error
-        # Override the fixture's Path.glob mock with our permission error mock
-        with (
-            patch(
-                "pathlib.Path.glob", side_effect=PermissionError("Permission denied")
-            ),
-            pytest.raises(UpdateFailed, match="Permission denied accessing"),
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_block_till_done()
+
+
+async def test_scan_permission_denied(
+    hass: HomeAssistant, init_integration_no_glob_mock
+):
+    """Test that scan handles permission errors gracefully.
+
+    Coverage targets:
+    - Lines 210-212 in _scan_folder (permission error on directory)
+    """
+    from tests.conftest import assert_exception_chain
+
+    config_entry = init_integration_no_glob_mock
+    coordinator = config_entry.runtime_data
+
+    try:
+        with patch(
+            "custom_components.retention_cleaner.coordinator.Path.glob",
+            side_effect=PermissionError("No access to directory"),
         ):
-            await coordinator.async_run_cleanup_now()
+            await assert_exception_chain(
+                coordinator.async_run_scan_now,
+                UpdateFailed,
+                "Permission denied accessing",
+            )
+
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_block_till_done()
+
+
+async def test_cleanup_permission_denied(
+    hass: HomeAssistant, init_integration_no_glob_mock
+):
+    """Test that cleanup handles permission errors gracefully.
+
+    Coverage targets:
+    - Lines 371-373 in _cleanup_folder (permission error on directory)
+    """
+    from tests.conftest import assert_exception_chain
+
+    config_entry = init_integration_no_glob_mock
+    coordinator = config_entry.runtime_data
+
+    try:
+        with patch(
+            "custom_components.retention_cleaner.coordinator.Path.glob",
+            side_effect=PermissionError("No access to directory"),
+        ):
+            await assert_exception_chain(
+                coordinator.async_run_cleanup_now,
+                UpdateFailed,
+                "Permission denied accessing",
+            )
 
     finally:
         await coordinator.async_shutdown()
