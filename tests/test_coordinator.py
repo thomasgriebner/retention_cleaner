@@ -1571,11 +1571,10 @@ async def test_general_exception_handling_in_async_operations(
 
         # Test cleanup general exception - real _cleanup_folder with filesystem error
         with (
-            patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.is_dir", return_value=True),
-            patch(
-                "pathlib.Path.glob",
-                side_effect=ValueError("Unexpected filesystem error"),
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(
+                Path, "glob", side_effect=ValueError("Unexpected filesystem error")
             ),
             pytest.raises(
                 UpdateFailed, match="Cleanup failed: Unexpected filesystem error"
@@ -1585,11 +1584,10 @@ async def test_general_exception_handling_in_async_operations(
 
         # Test scan general exception - real _scan_folder with filesystem error
         with (
-            patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.is_dir", return_value=True),
-            patch(
-                "pathlib.Path.glob",
-                side_effect=ValueError("Unexpected scan filesystem error"),
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(
+                Path, "glob", side_effect=ValueError("Unexpected scan filesystem error")
             ),
             pytest.raises(
                 UpdateFailed, match="Scan failed: Unexpected scan filesystem error"
@@ -1635,10 +1633,10 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
 
         # Test scan directory permission error - real _scan_folder with permission error
         with (
-            patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.is_dir", return_value=True),
-            patch(
-                "pathlib.Path.glob", side_effect=PermissionError("Permission denied")
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(
+                Path, "glob", side_effect=PermissionError("Permission denied")
             ),
             pytest.raises(UpdateFailed, match="Permission denied accessing"),
         ):
@@ -1646,10 +1644,10 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
 
         # Test cleanup directory permission error - real _cleanup_folder with permission error
         with (
-            patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.is_dir", return_value=True),
-            patch(
-                "pathlib.Path.glob", side_effect=PermissionError("Permission denied")
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(
+                Path, "glob", side_effect=PermissionError("Permission denied")
             ),
             pytest.raises(UpdateFailed, match="Permission denied accessing"),
         ):
