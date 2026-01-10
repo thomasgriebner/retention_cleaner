@@ -1576,13 +1576,23 @@ async def test_general_exception_handling_in_async_operations(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
             ) as mock_logger,
         ):
-            with pytest.raises(UpdateFailed) as exc_info:
+            # Debug: Catch any exception to see what's actually thrown
+            try:
                 await coordinator.async_run_cleanup_now()
-
-            assert "Unexpected cleanup error" in str(exc_info.value)
-            mock_logger.error.assert_called_with(
-                "Cleanup failed for %s: %s", str(media_dir), "Unexpected cleanup error"
-            )
+                raise AssertionError("Expected an exception but none was raised")
+            except UpdateFailed as e:
+                # This is what we expect
+                assert "Unexpected cleanup error" in str(e)
+                mock_logger.error.assert_called_with(
+                    "Cleanup failed for %s: %s",
+                    str(media_dir),
+                    "Unexpected cleanup error",
+                )
+            except Exception as e:
+                # Debug: Show what exception is actually thrown
+                raise AssertionError(
+                    f"Expected UpdateFailed but got {type(e).__name__}: {e}"
+                ) from e
 
         # Test async_scan_now general exception handling
         with (
@@ -1637,12 +1647,18 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             "_async_update_data",
             side_effect=RuntimeError("Permission denied: Access denied to directory"),
         ):
-            with pytest.raises(UpdateFailed) as exc_info:
+            # Debug: Catch any exception to see what's actually thrown
+            try:
                 await coordinator.async_run_scan_now()
-
-            assert "Permission denied" in str(exc_info.value) or "Access denied" in str(
-                exc_info.value
-            )
+                raise AssertionError("Expected an exception but none was raised")
+            except UpdateFailed as e:
+                # This is what we expect
+                assert "Permission denied" in str(e) or "Access denied" in str(e)
+            except Exception as e:
+                # Debug: Show what exception is actually thrown
+                raise AssertionError(
+                    f"Expected UpdateFailed but got {type(e).__name__}: {e}"
+                ) from e
 
         # Test cleanup directory permission error
         async def mock_cleanup_permission_error(*args, **kwargs):
