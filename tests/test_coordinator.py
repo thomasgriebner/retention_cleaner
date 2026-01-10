@@ -1524,11 +1524,13 @@ async def test_general_exception_handling_in_async_operations(
 
     try:
         # Test cleanup general exception - real _cleanup_folder with filesystem error
+        # Note: init_integration already has Path mocks, we need to override them
         with (
-            patch.object(Path, "exists", return_value=True) as mock_exists,
-            patch.object(Path, "is_dir", return_value=True) as mock_is_dir,
-            patch.object(
-                Path, "glob", side_effect=ValueError("Unexpected filesystem error")
+            patch("pathlib.Path.exists", return_value=True) as mock_exists,
+            patch("pathlib.Path.is_dir", return_value=True) as mock_is_dir,
+            patch(
+                "pathlib.Path.glob",
+                side_effect=ValueError("Unexpected filesystem error"),
             ) as mock_glob,
         ):
             try:
@@ -1552,10 +1554,11 @@ async def test_general_exception_handling_in_async_operations(
 
         # Test scan general exception - real _scan_folder with filesystem error
         with (
-            patch.object(Path, "exists", return_value=True) as mock_exists,
-            patch.object(Path, "is_dir", return_value=True) as mock_is_dir,
-            patch.object(
-                Path, "glob", side_effect=ValueError("Unexpected scan filesystem error")
+            patch("pathlib.Path.exists", return_value=True) as mock_exists,
+            patch("pathlib.Path.is_dir", return_value=True) as mock_is_dir,
+            patch(
+                "pathlib.Path.glob",
+                side_effect=ValueError("Unexpected scan filesystem error"),
             ) as mock_glob,
         ):
             try:
