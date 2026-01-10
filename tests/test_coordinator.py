@@ -39,7 +39,6 @@ async def test_coordinator_scan_with_real_files(
     media_dir.mkdir(parents=True)
 
     # Create new config entry with updated path instead of modifying data directly
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry = MockConfigEntry(
         domain="retention_cleaner",
@@ -94,8 +93,6 @@ async def test_coordinator_cleanup_dry_run_real_files(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     mock_setup_entry = MockConfigEntry(
         domain="retention_cleaner",
         title="Test Cleanup",
@@ -146,8 +143,6 @@ async def test_coordinator_cleanup_with_deletion_real_files(
     """Test cleanup with actual file deletion."""
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
@@ -202,8 +197,6 @@ async def test_coordinator_max_deletes_limit_real_files(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
         title="Test Cleanup No Dry Run",
@@ -251,7 +244,6 @@ async def test_coordinator_max_deletes_limit_real_files(
 
 async def test_coordinator_path_not_accessible(hass: HomeAssistant, mock_setup_entry):
     """Test behavior when path doesn't exist."""
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry = MockConfigEntry(
         domain="retention_cleaner",
@@ -281,8 +273,6 @@ async def test_coordinator_race_condition_handling(
     """Test graceful handling of race conditions when file is deleted by another process."""
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
@@ -388,8 +378,6 @@ async def test_coordinator_performance_tracking(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     mock_setup_entry = MockConfigEntry(
         domain="retention_cleaner",
         title="Test Cleanup",
@@ -450,8 +438,6 @@ async def test_coordinator_permission_error_with_real_files(
     """Test handling of permission errors during deletion with real files."""
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
@@ -518,8 +504,6 @@ async def test_coordinator_file_pattern_matching(
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     mock_setup_entry = MockConfigEntry(
         domain="retention_cleaner",
         title="Test Cleanup",
@@ -576,8 +560,6 @@ async def test_coordinator_retention_days_boundary(
     """Test retention days boundary conditions with real files."""
     media_dir = tmp_path / "media" / "test"
     media_dir.mkdir(parents=True)
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry = MockConfigEntry(
         domain="retention_cleaner",
@@ -639,8 +621,6 @@ async def test_daily_schedule_end_to_end(
     """
     media_dir = tmp_path / "media" / "scheduled_test"
     media_dir.mkdir(parents=True)
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
@@ -707,8 +687,6 @@ async def test_disk_full_during_cleanup(
 
     import errno
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
         title="Disk Test Cleanup",
@@ -774,8 +752,6 @@ async def test_readonly_filesystem_handling(
     """Test behavior on read-only filesystem."""
     media_dir = tmp_path / "media" / "readonly_test"
     media_dir.mkdir(parents=True)
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
@@ -1053,8 +1029,6 @@ async def test_concurrent_scan_and_cleanup(
     media_dir = tmp_path / "media" / "concurrent_test"
     media_dir.mkdir(parents=True)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
         title="Concurrent Test Cleanup",
@@ -1122,8 +1096,6 @@ async def test_concurrent_scan_and_cleanup(
 
 async def test_multiple_coordinator_instances(hass: HomeAssistant, tmp_path):
     """Test multiple retention rules running simultaneously."""
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     # Create test directories under tmp_path to ensure cleanup
     test_dirs = []
@@ -1209,8 +1181,6 @@ async def test_large_directory_performance(
 
     media_dir = tmp_path / "media" / "performance_test"
     media_dir.mkdir(parents=True)
-
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     mock_setup_entry_no_dry_run = MockConfigEntry(
         domain="retention_cleaner",
@@ -1537,7 +1507,7 @@ async def test_scheduler_callback_triggers_cleanup(
 
 
 async def test_general_exception_handling_in_async_operations(
-    hass: HomeAssistant, mock_setup_entry, tmp_path
+    hass: HomeAssistant, init_integration
 ):
     """Test general exception handling in both async_run_scan_now and async_run_cleanup_now.
 
@@ -1548,52 +1518,64 @@ async def test_general_exception_handling_in_async_operations(
     - Lines 620-623 in async_run_cleanup_now (exception conversion)
     - Lines 680-681 in _async_update_data (exception conversion)
     """
-    media_dir = tmp_path / "media" / "test"
-    media_dir.mkdir(parents=True)
-
-    config_entry = MockConfigEntry(
-        domain="retention_cleaner",
-        data={
-            "base_path": str(media_dir),
-            "pattern": "*.txt",
-            "retention_days": 7,
-            "dry_run": False,
-            "max_deletes": 100,
-        },
-    )
-    config_entry.add_to_hass(hass)
-
-    coordinator = RetentionCleanerCoordinator(hass, config_entry)
+    # Use properly setup integration
+    config_entry = init_integration
+    coordinator = config_entry.runtime_data
 
     try:
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-
         # Test cleanup general exception - real _cleanup_folder with filesystem error
         with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "is_dir", return_value=True),
+            patch.object(Path, "exists", return_value=True) as mock_exists,
+            patch.object(Path, "is_dir", return_value=True) as mock_is_dir,
             patch.object(
                 Path, "glob", side_effect=ValueError("Unexpected filesystem error")
-            ),
-            pytest.raises(
-                UpdateFailed, match="Cleanup failed: Unexpected filesystem error"
-            ),
+            ) as mock_glob,
         ):
-            await coordinator.async_run_cleanup_now()
+            try:
+                await coordinator.async_run_cleanup_now()
+                # If we get here, no exception was raised - debug info
+                raise AssertionError(
+                    f"Expected UpdateFailed but none raised. "
+                    f"exists called: {mock_exists.called}, "
+                    f"is_dir called: {mock_is_dir.called}, "
+                    f"glob called: {mock_glob.called}"
+                )
+            except UpdateFailed as e:
+                # This is what we expect
+                assert "Cleanup failed: Unexpected filesystem error" in str(e)
+            except Exception as e:
+                # Debug: Show what exception is actually thrown
+                raise AssertionError(
+                    f"Expected UpdateFailed but got {type(e).__name__}: {e}. "
+                    f"Mock calls - exists: {mock_exists.called}, is_dir: {mock_is_dir.called}, glob: {mock_glob.called}"
+                ) from e
 
         # Test scan general exception - real _scan_folder with filesystem error
         with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "is_dir", return_value=True),
+            patch.object(Path, "exists", return_value=True) as mock_exists,
+            patch.object(Path, "is_dir", return_value=True) as mock_is_dir,
             patch.object(
                 Path, "glob", side_effect=ValueError("Unexpected scan filesystem error")
-            ),
-            pytest.raises(
-                UpdateFailed, match="Scan failed: Unexpected scan filesystem error"
-            ),
+            ) as mock_glob,
         ):
-            await coordinator.async_run_scan_now()
+            try:
+                await coordinator.async_run_scan_now()
+                # If we get here, no exception was raised - debug info
+                raise AssertionError(
+                    f"Expected UpdateFailed but none raised. "
+                    f"exists called: {mock_exists.called}, "
+                    f"is_dir called: {mock_is_dir.called}, "
+                    f"glob called: {mock_glob.called}"
+                )
+            except UpdateFailed as e:
+                # This is what we expect
+                assert "Scan failed: Unexpected scan filesystem error" in str(e)
+            except Exception as e:
+                # Debug: Show what exception is actually thrown
+                raise AssertionError(
+                    f"Expected UpdateFailed but got {type(e).__name__}: {e}. "
+                    f"Mock calls - exists: {mock_exists.called}, is_dir: {mock_is_dir.called}, glob: {mock_glob.called}"
+                ) from e
 
     finally:
         await coordinator.async_shutdown()
@@ -1601,7 +1583,7 @@ async def test_general_exception_handling_in_async_operations(
 
 
 async def test_directory_permission_errors_and_unexpected_exceptions(
-    hass: HomeAssistant, mock_setup_entry, tmp_path
+    hass: HomeAssistant, init_integration
 ):
     """Test directory-level permission errors and unexpected exceptions in both scan and cleanup.
 
@@ -1610,22 +1592,9 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
     - Lines 372-373 in _cleanup_folder (permission error on directory)
     - Lines 377-379 in _cleanup_folder (unexpected exception)
     """
-    media_dir = tmp_path / "media" / "test"
-    media_dir.mkdir(parents=True)
-
-    config_entry = MockConfigEntry(
-        domain="retention_cleaner",
-        data={
-            "base_path": str(media_dir),
-            "pattern": "*.txt",
-            "retention_days": 7,
-            "dry_run": False,
-            "max_deletes": 100,
-        },
-    )
-    config_entry.add_to_hass(hass)
-
-    coordinator = RetentionCleanerCoordinator(hass, config_entry)
+    # Use properly setup integration
+    config_entry = init_integration
+    coordinator = config_entry.runtime_data
 
     try:
         await coordinator.async_refresh()
