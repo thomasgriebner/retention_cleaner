@@ -5,6 +5,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -21,7 +22,7 @@ async def async_setup_entry(
 
 
 class RetentionCleanerPathAvailable(
-    CoordinatorEntity[RetentionCleanerCoordinator], BinarySensorEntity
+    RestoreEntity, CoordinatorEntity[RetentionCleanerCoordinator], BinarySensorEntity
 ):
     def __init__(
         self, coordinator: RetentionCleanerCoordinator, entry: ConfigEntry
@@ -40,6 +41,32 @@ class RetentionCleanerPathAvailable(
             model="Folder retention rule",
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Entity has been added to hass."""
+        await super().async_added_to_hass()
+
+        try:
+            if (last_state := await self.async_get_last_state()) is not None:
+                self._restored_last_state = last_state.state
+            else:
+                self._restored_last_state = None
+        except Exception:
+            # Gracefully handle restore failures
+            self._restored_last_state = None
+
     @property
-    def is_on(self) -> bool:
-        return bool((self.coordinator.data or {}).get("path_available"))
+    def is_on(self) -> bool | None:
+        """Return true if the path is available or restored state."""
+        current_value = (self.coordinator.data or {}).get("path_available")
+
+        if current_value is not None:
+            return bool(current_value)
+
+        restored_state = getattr(self, "_restored_last_state", None)
+        if restored_state is not None and restored_state not in (
+            "unknown",
+            "unavailable",
+        ):
+            return restored_state == "on"
+
+        return None
