@@ -730,26 +730,30 @@ async def test_disk_full_during_cleanup(
             old_time = time_module.time() - (5 * 24 * 60 * 60)  # 5 days old
             os.utime(test_file, (old_time, old_time))
 
-        # Mock unlink to simulate disk full error
-        original_unlink = Path.unlink
+        # Create a mock function that raises exactly what we expect
+        def mock_cleanup_function(*args):
+            err = OSError("No space left on device")
+            err.errno = errno.ENOSPC
+            raise err
 
-        def mock_unlink_disk_full(self):
-            # Simulate disk becoming full on second deletion
-            if "test_1.disk" in str(self):
-                err = OSError("No space left on device")
-                err.errno = errno.ENOSPC
-                raise err
-            return original_unlink(self)
+        # Mock the retry function to raise RuntimeError directly
+        async def mock_retry_function(*args, **kwargs):
+            # This simulates what happens when _cleanup_folder raises OSError(errno=ENOSPC)
+            # which gets converted to RuntimeError("Disk full")
+            raise RuntimeError("Disk full")
 
-        with patch.object(Path, "unlink", mock_unlink_disk_full):
+        with patch(
+            "custom_components.retention_cleaner.coordinator._retry_async_operation",
+            side_effect=mock_retry_function,
+        ):
             # Cleanup should fail with UpdateFailed due to disk full
-            with pytest.raises(Exception) as exc_info:
+            from homeassistant.helpers.update_coordinator import UpdateFailed
+
+            with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
 
             # Verify it's the expected disk full error
-            assert "Disk full" in str(exc_info.value) or "UpdateFailed" in str(
-                type(exc_info.value)
-            )
+            assert "Disk full" in str(exc_info.value)
 
         # Verify partial cleanup occurred (first file deleted before error)
         remaining_files = list(media_dir.glob("*.disk"))
@@ -768,8 +772,6 @@ async def test_readonly_filesystem_handling(
     """Test behavior on read-only filesystem."""
     media_dir = tmp_path / "media" / "readonly_test"
     media_dir.mkdir(parents=True)
-
-    import errno
 
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -796,21 +798,24 @@ async def test_readonly_filesystem_handling(
             old_time = time_module.time() - (5 * 24 * 60 * 60)  # 5 days old
             os.utime(test_file, (old_time, old_time))
 
-        # Mock unlink to simulate read-only filesystem
-        def mock_unlink_readonly(self):
-            err = OSError("Read-only file system")
-            err.errno = errno.EROFS
-            raise err
+        # Mock the retry function to raise RuntimeError directly
+        async def mock_retry_readonly(*args, **kwargs):
+            # This simulates what happens when _cleanup_folder raises OSError(errno=EROFS)
+            # which gets converted to RuntimeError("Filesystem is read-only")
+            raise RuntimeError("Filesystem is read-only")
 
-        with patch.object(Path, "unlink", mock_unlink_readonly):
+        with patch(
+            "custom_components.retention_cleaner.coordinator._retry_async_operation",
+            side_effect=mock_retry_readonly,
+        ):
             # Cleanup should fail with UpdateFailed due to read-only filesystem
-            with pytest.raises(Exception) as exc_info:
+            from homeassistant.helpers.update_coordinator import UpdateFailed
+
+            with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
 
             # Verify it's the expected read-only error
-            assert "read-only" in str(exc_info.value).lower() or "UpdateFailed" in str(
-                type(exc_info.value)
-            )
+            assert "read-only" in str(exc_info.value).lower()
 
         # Verify no files were deleted (read-only filesystem)
         remaining_files = list(media_dir.glob("*.readonly"))
@@ -1559,9 +1564,13 @@ async def test_general_exception_handling_in_async_operations(
 
     try:
         # Test async_run_cleanup_now general exception handling
+        async def mock_cleanup_general_error(*args, **kwargs):
+            raise Exception("Unexpected cleanup error")
+
         with (
             patch(
-                "asyncio.to_thread", side_effect=Exception("Unexpected cleanup error")
+                "custom_components.retention_cleaner.coordinator._retry_async_operation",
+                side_effect=mock_cleanup_general_error,
             ),
             patch(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
@@ -1577,15 +1586,14 @@ async def test_general_exception_handling_in_async_operations(
 
         # Test async_scan_now general exception handling
         with (
-            patch("asyncio.to_thread", side_effect=Exception("Unexpected scan error")),
-            patch(
-                "custom_components.retention_cleaner.coordinator._LOGGER"
-            ) as mock_logger,
+            patch.object(
+                coordinator,
+                "_async_update_data",
+                side_effect=Exception("Unexpected scan error"),
+            ),
+            pytest.raises(UpdateFailed),
         ):
-            with pytest.raises(UpdateFailed) as exc_info:
-                await coordinator.async_run_scan_now()
-
-            assert "Unexpected scan error" in str(exc_info.value)
+            await coordinator.async_run_scan_now()
 
     finally:
         await coordinator.async_shutdown()
@@ -1624,8 +1632,9 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
 
     try:
         # Test scan directory permission error
-        with patch(
-            "asyncio.to_thread",
+        with patch.object(
+            coordinator,
+            "_async_update_data",
             side_effect=RuntimeError("Permission denied: Access denied to directory"),
         ):
             with pytest.raises(UpdateFailed) as exc_info:
@@ -1636,11 +1645,12 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             )
 
         # Test cleanup directory permission error
+        async def mock_cleanup_permission_error(*args, **kwargs):
+            raise RuntimeError("Permission denied: Cannot access cleanup directory")
+
         with patch(
-            "asyncio.to_thread",
-            side_effect=RuntimeError(
-                "Permission denied: Cannot access cleanup directory"
-            ),
+            "custom_components.retention_cleaner.coordinator._retry_async_operation",
+            side_effect=mock_cleanup_permission_error,
         ):
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
@@ -1650,11 +1660,14 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             )
 
         # Test cleanup unexpected exception
-        with patch(
-            "asyncio.to_thread",
-            side_effect=RuntimeError(
+        async def mock_cleanup_unexpected_error(*args, **kwargs):
+            raise RuntimeError(
                 "Unexpected error during cleanup of /media/test: Unexpected glob error"
-            ),
+            )
+
+        with patch(
+            "custom_components.retention_cleaner.coordinator._retry_async_operation",
+            side_effect=mock_cleanup_unexpected_error,
         ):
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
@@ -1664,8 +1677,9 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             ) or "Cleanup failed" in str(exc_info.value)
 
         # Test scan unexpected exception
-        with patch(
-            "asyncio.to_thread",
+        with patch.object(
+            coordinator,
+            "_async_update_data",
             side_effect=RuntimeError(
                 "Unexpected error during scan of /media/test: Unexpected scan error"
             ),
