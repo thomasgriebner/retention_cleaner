@@ -1515,17 +1515,30 @@ async def test_cleanup_handles_filesystem_errors(
     - Lines 377-379 in _cleanup_folder (general exception handling)
     - Lines 620-623 in async_run_cleanup_now (exception conversion)
     """
-    from tests.conftest import verify_cleanup_exception_handling
-
     config_entry = init_integration_no_glob_mock
     coordinator = config_entry.runtime_data
 
     try:
-        # Test various filesystem errors
-        exc_info = await verify_cleanup_exception_handling(
-            coordinator, ValueError("Filesystem error during cleanup")
-        )
-        assert "Filesystem error during cleanup" in str(exc_info.value)
+        with patch(
+            "custom_components.retention_cleaner.coordinator.Path"
+        ) as mock_path_class:
+            # Create a mock Path instance
+            mock_base_instance = Mock()
+            mock_path_class.return_value = mock_base_instance
+
+            # Setup the mock instance methods
+            mock_base_instance.exists.return_value = True
+            mock_base_instance.is_dir.return_value = True
+            mock_base_instance.glob.side_effect = ValueError(
+                "Filesystem error during cleanup"
+            )
+
+            # Should raise UpdateFailed
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
+
+            assert "Cleanup failed:" in str(exc_info.value)
+            assert "Filesystem error during cleanup" in str(exc_info.value)
 
     finally:
         await coordinator.async_shutdown()
@@ -1541,17 +1554,30 @@ async def test_scan_handles_filesystem_errors(
     - Lines 213-215 in _scan_folder (general exception handling)
     - Lines 680-681 in _async_update_data (exception conversion)
     """
-    from tests.conftest import verify_scan_exception_handling
-
     config_entry = init_integration_no_glob_mock
     coordinator = config_entry.runtime_data
 
     try:
-        # Test various filesystem errors
-        exc_info = await verify_scan_exception_handling(
-            coordinator, ValueError("Filesystem error during scan")
-        )
-        assert "Filesystem error during scan" in str(exc_info.value)
+        with patch(
+            "custom_components.retention_cleaner.coordinator.Path"
+        ) as mock_path_class:
+            # Create a mock Path instance
+            mock_base_instance = Mock()
+            mock_path_class.return_value = mock_base_instance
+
+            # Setup the mock instance methods
+            mock_base_instance.exists.return_value = True
+            mock_base_instance.is_dir.return_value = True
+            mock_base_instance.glob.side_effect = ValueError(
+                "Filesystem error during scan"
+            )
+
+            # Should raise UpdateFailed
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_scan_now()
+
+            assert "Scan failed:" in str(exc_info.value)
+            assert "Filesystem error during scan" in str(exc_info.value)
 
     finally:
         await coordinator.async_shutdown()
@@ -1566,21 +1592,27 @@ async def test_scan_permission_denied(
     Coverage targets:
     - Lines 210-212 in _scan_folder (permission error on directory)
     """
-    from tests.conftest import assert_exception_chain
 
     config_entry = init_integration_no_glob_mock
     coordinator = config_entry.runtime_data
 
     try:
         with patch(
-            "custom_components.retention_cleaner.coordinator.Path.glob",
-            side_effect=PermissionError("No access to directory"),
-        ):
-            await assert_exception_chain(
-                coordinator.async_run_scan_now,
-                UpdateFailed,
-                "Permission denied accessing",
+            "custom_components.retention_cleaner.coordinator.Path",
+        ) as mock_path_class:
+            # Create a mock Path instance that raises PermissionError on glob
+            mock_path_instance = Mock()
+            mock_path_class.return_value = mock_path_instance
+            mock_path_instance.glob.side_effect = PermissionError(
+                "No access to directory"
             )
+            mock_path_instance.exists.return_value = True
+            mock_path_instance.is_dir.return_value = True
+
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_scan_now()
+
+            assert "Permission denied accessing" in str(exc_info.value)
 
     finally:
         await coordinator.async_shutdown()
@@ -1595,21 +1627,27 @@ async def test_cleanup_permission_denied(
     Coverage targets:
     - Lines 371-373 in _cleanup_folder (permission error on directory)
     """
-    from tests.conftest import assert_exception_chain
 
     config_entry = init_integration_no_glob_mock
     coordinator = config_entry.runtime_data
 
     try:
         with patch(
-            "custom_components.retention_cleaner.coordinator.Path.glob",
-            side_effect=PermissionError("No access to directory"),
-        ):
-            await assert_exception_chain(
-                coordinator.async_run_cleanup_now,
-                UpdateFailed,
-                "Permission denied accessing",
+            "custom_components.retention_cleaner.coordinator.Path",
+        ) as mock_path_class:
+            # Create a mock Path instance that raises PermissionError on glob
+            mock_path_instance = Mock()
+            mock_path_class.return_value = mock_path_instance
+            mock_path_instance.glob.side_effect = PermissionError(
+                "No access to directory"
             )
+            mock_path_instance.exists.return_value = True
+            mock_path_instance.is_dir.return_value = True
+
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
+
+            assert "Permission denied accessing" in str(exc_info.value)
 
     finally:
         await coordinator.async_shutdown()

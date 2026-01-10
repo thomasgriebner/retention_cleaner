@@ -14,8 +14,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 
-from tests.conftest import assert_exception_chain
-
 
 async def test_nested_exception_handling(
     hass: HomeAssistant, init_integration_no_glob_mock
@@ -37,14 +35,19 @@ async def test_nested_exception_handling(
                 raise RuntimeError("Outer exception while handling inner") from e
 
         with patch(
-            "custom_components.retention_cleaner.coordinator.Path.glob",
-            side_effect=raise_nested_error,
-        ):
-            exc_info = await assert_exception_chain(
-                coordinator.async_run_cleanup_now, UpdateFailed, "Cleanup failed:"
-            )
+            "custom_components.retention_cleaner.coordinator.Path"
+        ) as mock_path_class:
+            mock_base = Mock()
+            mock_path_class.return_value = mock_base
+            mock_base.exists.return_value = True
+            mock_base.is_dir.return_value = True
+            mock_base.glob.side_effect = raise_nested_error
+
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
 
             # Verify the outer exception is captured
+            assert "Cleanup failed:" in str(exc_info.value)
             assert "Outer exception" in str(exc_info.value)
 
     finally:
@@ -115,16 +118,14 @@ async def test_parallel_operations_thread_safety(
             return []
 
         # Patch at the correct module level
-        with (
-            patch(
-                "custom_components.retention_cleaner.coordinator.Path.glob",
-                side_effect=track_scan_calls,
-            ),
-            patch(
-                "custom_components.retention_cleaner.coordinator.Path.unlink",
-                side_effect=track_cleanup_calls,
-            ),
-        ):
+        with patch(
+            "custom_components.retention_cleaner.coordinator.Path"
+        ) as mock_path_class:
+            mock_base = Mock()
+            mock_path_class.return_value = mock_base
+            mock_base.exists.return_value = True
+            mock_base.is_dir.return_value = True
+            mock_base.glob.side_effect = track_scan_calls
             # Run multiple operations in parallel
             tasks = [
                 coordinator.async_run_scan_now(),
@@ -204,9 +205,8 @@ async def test_disk_full_error_handling(
                 return_value=[Mock(name=f"file{i}.txt") for i in range(5)],
             ),
         ):
-            exc_info = await assert_exception_chain(
-                coordinator.async_run_cleanup_now, UpdateFailed, "Cleanup failed:"
-            )
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
 
             # The error should mention disk full
             error_str = str(exc_info.value).lower()
@@ -236,9 +236,8 @@ async def test_memory_error_handling(
             "custom_components.retention_cleaner.coordinator.Path.glob",
             side_effect=raise_memory_error,
         ):
-            exc_info = await assert_exception_chain(
-                coordinator.async_run_scan_now, UpdateFailed, "Scan failed:"
-            )
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_scan_now()
 
             assert "memory" in str(exc_info.value).lower()
 

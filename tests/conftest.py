@@ -36,10 +36,17 @@ async def verify_cleanup_exception_handling(coordinator, exception_to_raise):
     Tests the complete chain:
     filesystem error -> RuntimeError -> UpdateFailed
     """
+    # Mock Path where it's actually used in the coordinator module
     with patch(
-        "custom_components.retention_cleaner.coordinator.Path.glob",
-        side_effect=exception_to_raise,
-    ):
+        "custom_components.retention_cleaner.coordinator.Path",
+    ) as mock_path_class:
+        # Create a mock Path instance that raises the exception on glob
+        mock_path_instance = Mock()
+        mock_path_class.return_value = mock_path_instance
+        mock_path_instance.glob.side_effect = exception_to_raise
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.is_dir.return_value = True
+
         return await assert_exception_chain(
             coordinator.async_run_cleanup_now, UpdateFailed, "Cleanup failed:"
         )
@@ -51,10 +58,17 @@ async def verify_scan_exception_handling(coordinator, exception_to_raise):
     Tests the complete chain:
     filesystem error -> RuntimeError -> UpdateFailed
     """
+    # Mock Path where it's actually used in the coordinator module
     with patch(
-        "custom_components.retention_cleaner.coordinator.Path.glob",
-        side_effect=exception_to_raise,
-    ):
+        "custom_components.retention_cleaner.coordinator.Path",
+    ) as mock_path_class:
+        # Create a mock Path instance that raises the exception on glob
+        mock_path_instance = Mock()
+        mock_path_class.return_value = mock_path_instance
+        mock_path_instance.glob.side_effect = exception_to_raise
+        mock_path_instance.exists.return_value = True
+        mock_path_instance.is_dir.return_value = True
+
         return await assert_exception_chain(
             coordinator.async_run_scan_now, UpdateFailed, "Scan failed:"
         )
@@ -106,7 +120,9 @@ def mock_setup_entry_no_dry_run():
     )
 
 
-async def _setup_integration_base(hass, entry, mock_glob=True, glob_return_value=None):
+async def _setup_integration_base(
+    hass, entry, mock_glob=True, glob_return_value=None, keep_mocks=False
+):
     """Shared integration setup logic.
 
     Args:
@@ -114,6 +130,7 @@ async def _setup_integration_base(hass, entry, mock_glob=True, glob_return_value
         entry: Config entry to setup
         mock_glob: Whether to mock Path.glob
         glob_return_value: Value to return from Path.glob mock
+        keep_mocks: If True, return active mock context manager
     """
     entry.add_to_hass(hass)
 
@@ -129,14 +146,36 @@ async def _setup_integration_base(hass, entry, mock_glob=True, glob_return_value
         else:
             patches.append(patch("pathlib.Path.glob", return_value=[]))
 
-    # Apply patches and setup integration
-    with contextlib.ExitStack() as stack:
+    if keep_mocks:
+        # Keep mocks active and return them with the entry
+        stack = contextlib.ExitStack()
+        mock_objects = {}
         for p in patches:
-            stack.enter_context(p)
+            mock_obj = stack.enter_context(p)
+            # Store references to the mock objects
+            if "exists" in str(p):
+                mock_objects["exists"] = mock_obj
+            elif "is_dir" in str(p):
+                mock_objects["is_dir"] = mock_obj
+            elif "glob" in str(p):
+                mock_objects["glob"] = mock_obj
 
-        # Setup the integration
+        # Setup the integration with mocks active
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+
+        # Store mocks and stack on entry for cleanup
+        entry._mock_stack = stack
+        entry._mock_objects = mock_objects
+    else:
+        # Original behavior - mocks only during setup
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+
+            # Setup the integration
+            assert await hass.config_entries.async_setup(entry.entry_id)
+            await hass.async_block_till_done()
 
     # Verify runtime_data was set during setup
     assert hasattr(entry, "runtime_data")
@@ -156,9 +195,17 @@ async def init_integration_no_glob_mock(hass, mock_setup_entry):
     """Set up the retention_cleaner integration without mocking Path.glob.
 
     This fixture is specifically for tests that need to override Path.glob behavior,
-    such as exception handling tests.
+    such as exception handling tests. Keeps Path.exists and Path.is_dir mocks active.
     """
-    return await _setup_integration_base(hass, mock_setup_entry, mock_glob=False)
+    entry = await _setup_integration_base(
+        hass, mock_setup_entry, mock_glob=False, keep_mocks=True
+    )
+
+    yield entry
+
+    # Cleanup: close the mock stack
+    if hasattr(entry, "_mock_stack"):
+        entry._mock_stack.close()
 
 
 @pytest.fixture
