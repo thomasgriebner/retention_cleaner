@@ -182,8 +182,18 @@ class RetentionCleanerSensor(
             "unknown",
             "unavailable",
         ):
-            # Timestamp sensors: return as-is
+            # Timestamp sensors: convert string to datetime for HA validation
             if self._key in ("last_scan", "last_cleanup"):
+                if isinstance(restored_state, str):
+                    try:
+                        from datetime import datetime
+
+                        # Try to parse ISO format timestamp
+                        return datetime.fromisoformat(
+                            restored_state.replace("Z", "+00:00")
+                        )
+                    except (ValueError, AttributeError):
+                        return None
                 return restored_state
 
             # Numeric sensors: convert to int with fallback
