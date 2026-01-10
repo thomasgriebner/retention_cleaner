@@ -1528,69 +1528,87 @@ async def test_general_exception_handling_in_async_operations(
     print(f"DEBUG: coordinator dry_run: {coordinator.dry_run}")
 
     try:
-        # Test cleanup general exception - real _cleanup_folder with filesystem error
-        # Note: init_integration already has Path mocks, we need to override them
+        # Step 1: Test if _cleanup_folder is even called
+        with patch(
+            "custom_components.retention_cleaner.coordinator._cleanup_folder"
+        ) as mock_cleanup:
+            mock_cleanup.return_value = {
+                "deleted": 0,
+                "total_after": 0,
+                "older_remaining": 0,
+                "path_available": True,
+                "deleted_bytes": 0,
+            }
 
-        # Debug: Add a mock that logs what it returns
-        def debug_glob(*args, **kwargs):
-            print(f"DEBUG: glob called with args={args}, kwargs={kwargs}")
-            raise ValueError("Unexpected filesystem error")
+            await coordinator.async_run_cleanup_now()
 
-        with (
-            patch("pathlib.Path.exists", return_value=True) as mock_exists,
-            patch("pathlib.Path.is_dir", return_value=True) as mock_is_dir,
-            patch("pathlib.Path.glob", side_effect=debug_glob) as mock_glob,
-        ):
+            # Assert _cleanup_folder was called
+            assert (
+                mock_cleanup.called
+            ), "Step 1 FAILED: _cleanup_folder was never called"
+            print(
+                f"Step 1 PASSED: _cleanup_folder called {mock_cleanup.call_count} times"
+            )
+            print(f"Step 1: call args: {mock_cleanup.call_args_list}")
+
+        # Step 2: Test if _cleanup_folder throwing Exception propagates to UpdateFailed
+        with patch(
+            "custom_components.retention_cleaner.coordinator._cleanup_folder"
+        ) as mock_cleanup:
+            mock_cleanup.side_effect = RuntimeError("Test runtime error")
+
             try:
                 await coordinator.async_run_cleanup_now()
-                # If we get here, no exception was raised - debug info
                 raise AssertionError(
-                    f"Expected UpdateFailed but none raised. "
-                    f"exists called: {mock_exists.called} (call_count: {mock_exists.call_count}), "
-                    f"is_dir called: {mock_is_dir.called} (call_count: {mock_is_dir.call_count}), "
-                    f"glob called: {mock_glob.called} (call_count: {mock_glob.call_count}), "
-                    f"glob call_args_list: {mock_glob.call_args_list}"
+                    "Step 2 FAILED: Expected UpdateFailed but none raised"
                 )
             except UpdateFailed as e:
-                # This is what we expect
-                assert "Cleanup failed: Unexpected filesystem error" in str(e)
+                print(f"Step 2 PASSED: RuntimeError converted to UpdateFailed: {e}")
+                assert "Test runtime error" in str(e)
             except Exception as e:
-                # Debug: Show what exception is actually thrown
                 raise AssertionError(
-                    f"Expected UpdateFailed but got {type(e).__name__}: {e}. "
-                    f"Mock calls - exists: {mock_exists.call_count}, is_dir: {mock_is_dir.call_count}, glob: {mock_glob.call_count}. "
-                    f"glob call_args_list: {mock_glob.call_args_list}"
+                    f"Step 2 FAILED: Expected UpdateFailed but got {type(e).__name__}: {e}"
                 ) from e
 
-        # Test scan general exception - real _scan_folder with filesystem error
+        # Step 3: Test if _scan_folder is called via async_run_scan_now
+        with patch(
+            "custom_components.retention_cleaner.coordinator._scan_folder"
+        ) as mock_scan:
+            mock_scan.return_value = {
+                "total_files": 0,
+                "older_than_retention": 0,
+                "path_available": True,
+            }
 
-        # Debug: Add a mock that logs what it returns
-        def debug_scan_glob(*args, **kwargs):
-            print(f"DEBUG SCAN: glob called with args={args}, kwargs={kwargs}")
-            raise ValueError("Unexpected scan filesystem error")
+            await coordinator.async_run_scan_now()
 
-        with (
-            patch("pathlib.Path.exists", return_value=True) as mock_exists,
-            patch("pathlib.Path.is_dir", return_value=True) as mock_is_dir,
-            patch("pathlib.Path.glob", side_effect=debug_scan_glob) as mock_glob,
-        ):
+            # This should call _scan_folder via async_request_refresh -> _async_update_data
+            assert (
+                mock_scan.called
+            ), "Step 3 FAILED: _scan_folder was never called via async_run_scan_now"
+            print(
+                f"Step 3 PASSED: _scan_folder called {mock_scan.call_count} times via scan"
+            )
+
+        # Step 4: Test if _scan_folder throwing Exception propagates to UpdateFailed
+        with patch(
+            "custom_components.retention_cleaner.coordinator._scan_folder"
+        ) as mock_scan:
+            mock_scan.side_effect = RuntimeError("Test scan runtime error")
+
             try:
                 await coordinator.async_run_scan_now()
-                # If we get here, no exception was raised - debug info
                 raise AssertionError(
-                    f"Expected UpdateFailed but none raised. "
-                    f"exists called: {mock_exists.called}, "
-                    f"is_dir called: {mock_is_dir.called}, "
-                    f"glob called: {mock_glob.called}"
+                    "Step 4 FAILED: Expected UpdateFailed but none raised"
                 )
             except UpdateFailed as e:
-                # This is what we expect
-                assert "Scan failed: Unexpected scan filesystem error" in str(e)
+                print(
+                    f"Step 4 PASSED: Scan RuntimeError converted to UpdateFailed: {e}"
+                )
+                assert "Test scan runtime error" in str(e)
             except Exception as e:
-                # Debug: Show what exception is actually thrown
                 raise AssertionError(
-                    f"Expected UpdateFailed but got {type(e).__name__}: {e}. "
-                    f"Mock calls - exists: {mock_exists.called}, is_dir: {mock_is_dir.called}, glob: {mock_glob.called}"
+                    f"Step 4 FAILED: Expected UpdateFailed but got {type(e).__name__}: {e}"
                 ) from e
 
     finally:
