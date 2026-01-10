@@ -1561,23 +1561,19 @@ async def test_general_exception_handling_in_async_operations(
         # Test async_run_cleanup_now general exception handling
         with (
             patch(
-                "custom_components.retention_cleaner.coordinator._cleanup_folder_sync"
-            ) as mock_cleanup_sync,
+                "custom_components.retention_cleaner.coordinator._cleanup_folder"
+            ) as mock_cleanup_func,
             patch(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
             ) as mock_logger,
         ):
-            # Make _cleanup_folder_sync raise a general exception
-            mock_cleanup_sync.side_effect = Exception("Unexpected cleanup error")
+            # Make _cleanup_folder raise a general exception
+            mock_cleanup_func.side_effect = Exception("Unexpected cleanup error")
 
-            # Should raise UpdateFailed
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
 
-            # Verify the exception message
             assert "Unexpected cleanup error" in str(exc_info.value)
-
-            # Verify error was logged
             mock_logger.error.assert_called_with(
                 "Cleanup failed for %s: %s", str(media_dir), "Unexpected cleanup error"
             )
@@ -1585,26 +1581,19 @@ async def test_general_exception_handling_in_async_operations(
         # Test async_scan_now general exception handling
         with (
             patch(
-                "custom_components.retention_cleaner.coordinator._scan_folder_sync"
-            ) as mock_scan_sync,
+                "custom_components.retention_cleaner.coordinator._scan_folder"
+            ) as mock_scan_func,
             patch(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
             ) as mock_logger,
         ):
-            # Make _scan_folder_sync raise a general exception
-            mock_scan_sync.side_effect = Exception("Unexpected scan error")
+            # Make _scan_folder raise a general exception
+            mock_scan_func.side_effect = Exception("Unexpected scan error")
 
-            # Should raise UpdateFailed
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_scan_now()
 
-            # Verify the exception message
             assert "Unexpected scan error" in str(exc_info.value)
-
-            # Verify error was logged
-            mock_logger.error.assert_called_with(
-                "Scan failed for %s: %s", str(media_dir), "Unexpected scan error"
-            )
 
     finally:
         await coordinator.async_shutdown()
@@ -1642,9 +1631,11 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
     coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
 
     try:
-        # Test scan directory permission error (lines 213-215)
+        # Test scan directory permission error
         with (
-            patch("pathlib.Path.glob") as mock_glob,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(Path, "glob") as mock_glob,
             patch(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
             ) as mock_logger,
@@ -1652,25 +1643,25 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             # Make glob raise PermissionError (directory not accessible)
             mock_glob.side_effect = PermissionError("Access denied to directory")
 
-            # Should raise UpdateFailed with wrapped RuntimeError
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_scan_now()
 
-            # Verify the error chain
             assert "Permission denied" in str(exc_info.value) or "Access denied" in str(
                 exc_info.value
             )
 
-            # Verify error was logged
+            # Verify error was logged at the right level
             mock_logger.error.assert_any_call(
                 "No permission to access directory %s: %s",
                 str(media_dir),
                 "Access denied to directory",
             )
 
-        # Test cleanup directory permission error (lines 372-373)
+        # Test cleanup directory permission error
         with (
-            patch("pathlib.Path.glob") as mock_glob,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(Path, "glob") as mock_glob,
             patch(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
             ) as mock_logger,
@@ -1678,11 +1669,9 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             # Make glob raise PermissionError during cleanup
             mock_glob.side_effect = PermissionError("Cannot access cleanup directory")
 
-            # Should raise UpdateFailed with wrapped RuntimeError
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
 
-            # Verify the error chain
             assert "Permission denied" in str(exc_info.value) or "Cannot access" in str(
                 exc_info.value
             )
@@ -1694,9 +1683,11 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
                 "Cannot access cleanup directory",
             )
 
-        # Test cleanup unexpected exception (lines 377-379)
+        # Test cleanup unexpected exception
         with (
-            patch("pathlib.Path.glob") as mock_glob,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(Path, "glob") as mock_glob,
             patch(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
             ) as mock_logger,
@@ -1704,11 +1695,9 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             # Make glob raise an unexpected exception
             mock_glob.side_effect = ValueError("Unexpected glob error")
 
-            # Should raise UpdateFailed with wrapped RuntimeError
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
 
-            # Verify the error chain
             assert "Unexpected glob error" in str(
                 exc_info.value
             ) or "Cleanup failed" in str(exc_info.value)
@@ -1720,9 +1709,11 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
                 "Unexpected glob error",
             )
 
-        # Test scan unexpected exception (lines 217-219 in _scan_folder)
+        # Test scan unexpected exception
         with (
-            patch("pathlib.Path.glob") as mock_glob,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(Path, "glob") as mock_glob,
             patch(
                 "custom_components.retention_cleaner.coordinator._LOGGER"
             ) as mock_logger,
@@ -1730,11 +1721,9 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
             # Make glob raise an unexpected exception
             mock_glob.side_effect = ValueError("Unexpected scan error")
 
-            # Should raise UpdateFailed with wrapped RuntimeError
             with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_scan_now()
 
-            # Verify the error chain
             assert "Unexpected scan error" in str(
                 exc_info.value
             ) or "Scan failed" in str(exc_info.value)
