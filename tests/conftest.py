@@ -191,24 +191,6 @@ async def init_integration(hass, mock_setup_entry):
 
 
 @pytest.fixture
-async def init_integration_no_glob_mock(hass, mock_setup_entry):
-    """Set up the retention_cleaner integration without mocking Path.glob.
-
-    This fixture is specifically for tests that need to override Path.glob behavior,
-    such as exception handling tests. Keeps Path.exists and Path.is_dir mocks active.
-    """
-    entry = await _setup_integration_base(
-        hass, mock_setup_entry, mock_glob=False, keep_mocks=True
-    )
-
-    yield entry
-
-    # Cleanup: close the mock stack
-    if hasattr(entry, "_mock_stack"):
-        entry._mock_stack.close()
-
-
-@pytest.fixture
 async def init_integration_with_exception(hass, mock_setup_entry, request):
     """Set up integration with configurable exception on Path.glob.
 

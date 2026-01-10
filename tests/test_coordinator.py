@@ -1506,9 +1506,7 @@ async def test_scheduler_callback_triggers_cleanup(
         await hass.async_block_till_done()
 
 
-async def test_cleanup_handles_filesystem_errors(
-    hass: HomeAssistant, init_integration_no_glob_mock
-):
+async def test_cleanup_handles_filesystem_errors(hass: HomeAssistant, init_integration):
     """Test that cleanup operations properly handle filesystem errors.
 
     Coverage targets:
@@ -1517,15 +1515,8 @@ async def test_cleanup_handles_filesystem_errors(
     """
     import sys
 
-    # Debug: Check if fixture setup worked
-    assert init_integration_no_glob_mock is not None, "Fixture failed to initialize"
-
-    config_entry = init_integration_no_glob_mock
-    assert config_entry is not None, "Config entry is None"
-    assert hasattr(config_entry, "runtime_data"), "Config entry missing runtime_data"
-
+    config_entry = init_integration
     coordinator = config_entry.runtime_data
-    assert coordinator is not None, "Coordinator is None"
 
     try:
         with patch(
@@ -1621,23 +1612,14 @@ def test_scan_permission_denied():
         assert "Permission denied accessing" in str(exc_info.value)
 
 
-async def test_cleanup_permission_denied(
-    hass: HomeAssistant, init_integration_no_glob_mock
-):
+async def test_cleanup_permission_denied(hass: HomeAssistant, init_integration):
     """Test that cleanup handles permission errors gracefully.
 
     Coverage targets:
     - Lines 371-373 in _cleanup_folder (permission error on directory)
     """
-    # Debug: Check if fixture setup worked
-    assert init_integration_no_glob_mock is not None, "Fixture failed to initialize"
-
-    config_entry = init_integration_no_glob_mock
-    assert config_entry is not None, "Config entry is None"
-    assert hasattr(config_entry, "runtime_data"), "Config entry missing runtime_data"
-
+    config_entry = init_integration
     coordinator = config_entry.runtime_data
-    assert coordinator is not None, "Coordinator is None"
 
     try:
         with patch(
