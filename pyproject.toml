@@ -52,5 +52,25 @@ addopts = [
     "--strict-markers",
     "--disable-warnings",
     "-ra",
+    "--cov=custom_components.retention_cleaner",
+    "--cov-fail-under=90",
 ]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["custom_components.retention_cleaner"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]

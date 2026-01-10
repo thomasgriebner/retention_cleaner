@@ -1468,3 +1468,284 @@ async def test_concurrent_directory_access_safety(tmp_path):
 
     # Should have some files remaining (not all deleted due to max_deletes=25)
     assert len(remaining_files) > 0
+
+
+async def test_scheduler_callback_triggers_cleanup(
+    hass: HomeAssistant, mock_setup_entry
+):
+    """Test that the scheduled cleanup callback triggers correctly and logs the debug message.
+
+    Coverage target: Lines 527-528 in coordinator.py
+    - _LOGGER.debug("Scheduled cleanup triggered for %s", self.base_path)
+    - await self.async_run_cleanup_now(triggered_by="schedule")
+    """
+    from datetime import datetime
+    from unittest.mock import AsyncMock
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        # Capture the callback when async_track_time_change is called
+        callback_function = None
+
+        def capture_callback(hass, callback, hour, minute, second):
+            nonlocal callback_function
+            callback_function = callback
+            return Mock()  # Return mock unsubscribe function
+
+        with (
+            patch(
+                "custom_components.retention_cleaner.coordinator.async_track_time_change",
+                side_effect=capture_callback,
+            ),
+            patch.object(
+                coordinator, "async_run_cleanup_now", new=AsyncMock()
+            ) as mock_cleanup,
+            patch(
+                "custom_components.retention_cleaner.coordinator._LOGGER"
+            ) as mock_logger,
+        ):
+            # Setup daily schedule to capture the callback
+            await coordinator.async_setup_daily_schedule()
+
+            # Verify callback was captured
+            assert callback_function is not None, "Callback should have been captured"
+
+            # Trigger the callback manually with a mock datetime
+            now = datetime(2024, 1, 15, 2, 0, 0)  # Match the scheduled time
+            await callback_function(now)
+            await hass.async_block_till_done()
+
+            # Verify debug log was called
+            mock_logger.debug.assert_called_with(
+                "Scheduled cleanup triggered for %s", "/media/test"
+            )
+
+            # Verify cleanup was triggered with correct parameter
+            mock_cleanup.assert_called_once_with(triggered_by="schedule")
+
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_block_till_done()
+
+
+async def test_general_exception_handling_in_async_operations(
+    hass: HomeAssistant, mock_setup_entry, tmp_path
+):
+    """Test that general exceptions in async_run_cleanup_now and async_scan_now get properly converted to UpdateFailed.
+
+    Coverage targets:
+    - Lines 620-623 in async_run_cleanup_now
+    - Lines 680-681 in async_scan_now
+    """
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+        },
+        entry_id="test_entry_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        # Test async_run_cleanup_now general exception handling
+        with (
+            patch(
+                "custom_components.retention_cleaner.coordinator._cleanup_folder_sync"
+            ) as mock_cleanup_sync,
+            patch(
+                "custom_components.retention_cleaner.coordinator._LOGGER"
+            ) as mock_logger,
+        ):
+            # Make _cleanup_folder_sync raise a general exception
+            mock_cleanup_sync.side_effect = Exception("Unexpected cleanup error")
+
+            # Should raise UpdateFailed
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
+
+            # Verify the exception message
+            assert "Unexpected cleanup error" in str(exc_info.value)
+
+            # Verify error was logged
+            mock_logger.error.assert_called_with(
+                "Cleanup failed for %s: %s", str(media_dir), "Unexpected cleanup error"
+            )
+
+        # Test async_scan_now general exception handling
+        with (
+            patch(
+                "custom_components.retention_cleaner.coordinator._scan_folder_sync"
+            ) as mock_scan_sync,
+            patch(
+                "custom_components.retention_cleaner.coordinator._LOGGER"
+            ) as mock_logger,
+        ):
+            # Make _scan_folder_sync raise a general exception
+            mock_scan_sync.side_effect = Exception("Unexpected scan error")
+
+            # Should raise UpdateFailed
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_scan_now()
+
+            # Verify the exception message
+            assert "Unexpected scan error" in str(exc_info.value)
+
+            # Verify error was logged
+            mock_logger.error.assert_called_with(
+                "Scan failed for %s: %s", str(media_dir), "Unexpected scan error"
+            )
+
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_block_till_done()
+
+
+async def test_directory_permission_errors_and_unexpected_exceptions(
+    hass: HomeAssistant, mock_setup_entry, tmp_path
+):
+    """Test directory-level permission errors and unexpected exceptions in both scan and cleanup.
+
+    Coverage targets:
+    - Lines 213-215 in _scan_folder (permission error on directory)
+    - Lines 372-373 in _cleanup_folder (permission error on directory)
+    - Lines 377-379 in _cleanup_folder (unexpected exception)
+    """
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+            "pattern": "*.log",
+            "dry_run": False,
+        },
+        entry_id="test_entry_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        # Test scan directory permission error (lines 213-215)
+        with (
+            patch("pathlib.Path.glob") as mock_glob,
+            patch(
+                "custom_components.retention_cleaner.coordinator._LOGGER"
+            ) as mock_logger,
+        ):
+            # Make glob raise PermissionError (directory not accessible)
+            mock_glob.side_effect = PermissionError("Access denied to directory")
+
+            # Should raise UpdateFailed with wrapped RuntimeError
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_scan_now()
+
+            # Verify the error chain
+            assert "Permission denied" in str(exc_info.value) or "Access denied" in str(
+                exc_info.value
+            )
+
+            # Verify error was logged
+            mock_logger.error.assert_any_call(
+                "No permission to access directory %s: %s",
+                str(media_dir),
+                "Access denied to directory",
+            )
+
+        # Test cleanup directory permission error (lines 372-373)
+        with (
+            patch("pathlib.Path.glob") as mock_glob,
+            patch(
+                "custom_components.retention_cleaner.coordinator._LOGGER"
+            ) as mock_logger,
+        ):
+            # Make glob raise PermissionError during cleanup
+            mock_glob.side_effect = PermissionError("Cannot access cleanup directory")
+
+            # Should raise UpdateFailed with wrapped RuntimeError
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
+
+            # Verify the error chain
+            assert "Permission denied" in str(exc_info.value) or "Cannot access" in str(
+                exc_info.value
+            )
+
+            # Verify error was logged
+            mock_logger.error.assert_any_call(
+                "No permission to access directory %s: %s",
+                str(media_dir),
+                "Cannot access cleanup directory",
+            )
+
+        # Test cleanup unexpected exception (lines 377-379)
+        with (
+            patch("pathlib.Path.glob") as mock_glob,
+            patch(
+                "custom_components.retention_cleaner.coordinator._LOGGER"
+            ) as mock_logger,
+        ):
+            # Make glob raise an unexpected exception
+            mock_glob.side_effect = ValueError("Unexpected glob error")
+
+            # Should raise UpdateFailed with wrapped RuntimeError
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
+
+            # Verify the error chain
+            assert "Unexpected glob error" in str(
+                exc_info.value
+            ) or "Cleanup failed" in str(exc_info.value)
+
+            # Verify error was logged
+            mock_logger.error.assert_any_call(
+                "Unexpected error during cleanup of %s: %s",
+                str(media_dir),
+                "Unexpected glob error",
+            )
+
+        # Test scan unexpected exception (lines 217-219 in _scan_folder)
+        with (
+            patch("pathlib.Path.glob") as mock_glob,
+            patch(
+                "custom_components.retention_cleaner.coordinator._LOGGER"
+            ) as mock_logger,
+        ):
+            # Make glob raise an unexpected exception
+            mock_glob.side_effect = ValueError("Unexpected scan error")
+
+            # Should raise UpdateFailed with wrapped RuntimeError
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_scan_now()
+
+            # Verify the error chain
+            assert "Unexpected scan error" in str(
+                exc_info.value
+            ) or "Scan failed" in str(exc_info.value)
+
+            # Verify error was logged
+            mock_logger.error.assert_any_call(
+                "Unexpected error during scan of %s: %s",
+                str(media_dir),
+                "Unexpected scan error",
+            )
+
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_block_till_done()
