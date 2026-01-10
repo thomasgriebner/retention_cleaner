@@ -1518,98 +1518,31 @@ async def test_general_exception_handling_in_async_operations(
     - Lines 620-623 in async_run_cleanup_now (exception conversion)
     - Lines 680-681 in _async_update_data (exception conversion)
     """
-    # Use properly setup integration
     config_entry = init_integration
     coordinator = config_entry.runtime_data
 
-    # Debug: Print coordinator info
-    print(f"DEBUG: coordinator type: {type(coordinator)}")
-    print(f"DEBUG: coordinator base_path: {coordinator.base_path}")
-    print(f"DEBUG: coordinator dry_run: {coordinator.dry_run}")
-
     try:
-        # Step 1: Test if _cleanup_folder is even called
+        # Test 1: Real _cleanup_folder with filesystem error
+        # Override the fixture's Path.glob mock with our exception-raising mock
         with patch(
-            "custom_components.retention_cleaner.coordinator._cleanup_folder"
-        ) as mock_cleanup:
-            mock_cleanup.return_value = {
-                "deleted": 0,
-                "total_after": 0,
-                "older_remaining": 0,
-                "path_available": True,
-                "deleted_bytes": 0,
-            }
-
-            await coordinator.async_run_cleanup_now()
-
-            # Assert _cleanup_folder was called
-            assert (
-                mock_cleanup.called
-            ), "Step 1 FAILED: _cleanup_folder was never called"
-            print(
-                f"Step 1 PASSED: _cleanup_folder called {mock_cleanup.call_count} times"
-            )
-            print(f"Step 1: call args: {mock_cleanup.call_args_list}")
-
-        # Step 2: Test if _cleanup_folder throwing Exception propagates to UpdateFailed
-        with patch(
-            "custom_components.retention_cleaner.coordinator._cleanup_folder"
-        ) as mock_cleanup:
-            mock_cleanup.side_effect = RuntimeError("Test runtime error")
-
-            try:
+            "pathlib.Path.glob", side_effect=ValueError("Real filesystem error")
+        ):
+            with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_cleanup_now()
-                raise AssertionError(
-                    "Step 2 FAILED: Expected UpdateFailed but none raised"
-                )
-            except UpdateFailed as e:
-                print(f"Step 2 PASSED: RuntimeError converted to UpdateFailed: {e}")
-                assert "Test runtime error" in str(e)
-            except Exception as e:
-                raise AssertionError(
-                    f"Step 2 FAILED: Expected UpdateFailed but got {type(e).__name__}: {e}"
-                ) from e
 
-        # Step 3: Test if _scan_folder is called via async_run_scan_now
+            assert "Cleanup failed:" in str(exc_info.value)
+            assert "Real filesystem error" in str(exc_info.value)
+
+        # Test 2: Real _scan_folder with filesystem error
+        # Override the fixture's Path.glob mock with our exception-raising mock
         with patch(
-            "custom_components.retention_cleaner.coordinator._scan_folder"
-        ) as mock_scan:
-            mock_scan.return_value = {
-                "total_files": 0,
-                "older_than_retention": 0,
-                "path_available": True,
-            }
-
-            await coordinator.async_run_scan_now()
-
-            # This should call _scan_folder via async_request_refresh -> _async_update_data
-            assert (
-                mock_scan.called
-            ), "Step 3 FAILED: _scan_folder was never called via async_run_scan_now"
-            print(
-                f"Step 3 PASSED: _scan_folder called {mock_scan.call_count} times via scan"
-            )
-
-        # Step 4: Test if _scan_folder throwing Exception propagates to UpdateFailed
-        with patch(
-            "custom_components.retention_cleaner.coordinator._scan_folder"
-        ) as mock_scan:
-            mock_scan.side_effect = RuntimeError("Test scan runtime error")
-
-            try:
+            "pathlib.Path.glob", side_effect=ValueError("Real scan filesystem error")
+        ):
+            with pytest.raises(UpdateFailed) as exc_info:
                 await coordinator.async_run_scan_now()
-                raise AssertionError(
-                    "Step 4 FAILED: Expected UpdateFailed but none raised"
-                )
-            except UpdateFailed as e:
-                print(
-                    f"Step 4 PASSED: Scan RuntimeError converted to UpdateFailed: {e}"
-                )
-                assert "Test scan runtime error" in str(e)
-            except Exception as e:
-                raise AssertionError(
-                    f"Step 4 FAILED: Expected UpdateFailed but got {type(e).__name__}: {e}"
-                ) from e
+
+            assert "Scan failed:" in str(exc_info.value)
+            assert "Real scan filesystem error" in str(exc_info.value)
 
     finally:
         await coordinator.async_shutdown()
@@ -1626,31 +1559,25 @@ async def test_directory_permission_errors_and_unexpected_exceptions(
     - Lines 372-373 in _cleanup_folder (permission error on directory)
     - Lines 377-379 in _cleanup_folder (unexpected exception)
     """
-    # Use properly setup integration
     config_entry = init_integration
     coordinator = config_entry.runtime_data
 
     try:
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-
-        # Test scan directory permission error - real _scan_folder with permission error
+        # Test scan directory permission error
+        # Override the fixture's Path.glob mock with our permission error mock
         with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "is_dir", return_value=True),
-            patch.object(
-                Path, "glob", side_effect=PermissionError("Permission denied")
+            patch(
+                "pathlib.Path.glob", side_effect=PermissionError("Permission denied")
             ),
             pytest.raises(UpdateFailed, match="Permission denied accessing"),
         ):
             await coordinator.async_run_scan_now()
 
-        # Test cleanup directory permission error - real _cleanup_folder with permission error
+        # Test cleanup directory permission error
+        # Override the fixture's Path.glob mock with our permission error mock
         with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "is_dir", return_value=True),
-            patch.object(
-                Path, "glob", side_effect=PermissionError("Permission denied")
+            patch(
+                "pathlib.Path.glob", side_effect=PermissionError("Permission denied")
             ),
             pytest.raises(UpdateFailed, match="Permission denied accessing"),
         ):
