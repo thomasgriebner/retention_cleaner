@@ -139,12 +139,25 @@ async def test_entry_reload(hass: HomeAssistant, init_integration):
     """Test reloading a config entry."""
     entry = init_integration
 
+    # Ensure the entry is initially loaded
+    assert entry.state == ConfigEntryState.LOADED
+
     # Reload the entry - this will unload and then setup again
-    await hass.config_entries.async_reload(entry.entry_id)
-    await hass.async_block_till_done()
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        result = await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+
+    # Check if reload was successful
+    assert result is True, f"Reload failed, entry state: {entry.state}"
 
     # Entry should still be loaded after reload
-    assert entry.state == ConfigEntryState.LOADED
+    assert (
+        entry.state == ConfigEntryState.LOADED
+    ), f"Expected LOADED but got {entry.state}"
 
     # Clean up new coordinator after reload
     await async_unload_entry(hass, entry)
