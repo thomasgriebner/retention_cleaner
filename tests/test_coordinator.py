@@ -1522,25 +1522,34 @@ async def test_general_exception_handling_in_async_operations(
     config_entry = init_integration
     coordinator = config_entry.runtime_data
 
+    # Debug: Print coordinator info
+    print(f"DEBUG: coordinator type: {type(coordinator)}")
+    print(f"DEBUG: coordinator base_path: {coordinator.base_path}")
+    print(f"DEBUG: coordinator dry_run: {coordinator.dry_run}")
+
     try:
         # Test cleanup general exception - real _cleanup_folder with filesystem error
         # Note: init_integration already has Path mocks, we need to override them
+
+        # Debug: Add a mock that logs what it returns
+        def debug_glob(*args, **kwargs):
+            print(f"DEBUG: glob called with args={args}, kwargs={kwargs}")
+            raise ValueError("Unexpected filesystem error")
+
         with (
             patch("pathlib.Path.exists", return_value=True) as mock_exists,
             patch("pathlib.Path.is_dir", return_value=True) as mock_is_dir,
-            patch(
-                "pathlib.Path.glob",
-                side_effect=ValueError("Unexpected filesystem error"),
-            ) as mock_glob,
+            patch("pathlib.Path.glob", side_effect=debug_glob) as mock_glob,
         ):
             try:
                 await coordinator.async_run_cleanup_now()
                 # If we get here, no exception was raised - debug info
                 raise AssertionError(
                     f"Expected UpdateFailed but none raised. "
-                    f"exists called: {mock_exists.called}, "
-                    f"is_dir called: {mock_is_dir.called}, "
-                    f"glob called: {mock_glob.called}"
+                    f"exists called: {mock_exists.called} (call_count: {mock_exists.call_count}), "
+                    f"is_dir called: {mock_is_dir.called} (call_count: {mock_is_dir.call_count}), "
+                    f"glob called: {mock_glob.called} (call_count: {mock_glob.call_count}), "
+                    f"glob call_args_list: {mock_glob.call_args_list}"
                 )
             except UpdateFailed as e:
                 # This is what we expect
@@ -1549,17 +1558,21 @@ async def test_general_exception_handling_in_async_operations(
                 # Debug: Show what exception is actually thrown
                 raise AssertionError(
                     f"Expected UpdateFailed but got {type(e).__name__}: {e}. "
-                    f"Mock calls - exists: {mock_exists.called}, is_dir: {mock_is_dir.called}, glob: {mock_glob.called}"
+                    f"Mock calls - exists: {mock_exists.call_count}, is_dir: {mock_is_dir.call_count}, glob: {mock_glob.call_count}. "
+                    f"glob call_args_list: {mock_glob.call_args_list}"
                 ) from e
 
         # Test scan general exception - real _scan_folder with filesystem error
+
+        # Debug: Add a mock that logs what it returns
+        def debug_scan_glob(*args, **kwargs):
+            print(f"DEBUG SCAN: glob called with args={args}, kwargs={kwargs}")
+            raise ValueError("Unexpected scan filesystem error")
+
         with (
             patch("pathlib.Path.exists", return_value=True) as mock_exists,
             patch("pathlib.Path.is_dir", return_value=True) as mock_is_dir,
-            patch(
-                "pathlib.Path.glob",
-                side_effect=ValueError("Unexpected scan filesystem error"),
-            ) as mock_glob,
+            patch("pathlib.Path.glob", side_effect=debug_scan_glob) as mock_glob,
         ):
             try:
                 await coordinator.async_run_scan_now()
