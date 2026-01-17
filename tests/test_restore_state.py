@@ -2,282 +2,350 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock
+from datetime import UTC, datetime
+from unittest.mock import patch
+
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_mock_restore_state_shutdown_restart,
+)
 
 from homeassistant.core import HomeAssistant
 
-
-def create_mock_last_state(state_value: str, attributes: dict | None = None):
-    """Create a mock last_state object for testing."""
-    mock_state = Mock()
-    mock_state.state = state_value
-    mock_state.attributes = attributes or {}
-    return mock_state
+import custom_components.retention_cleaner
 
 
-async def test_sensor_restore_numeric_value(hass: HomeAssistant, init_integration):
+async def test_sensor_restore_numeric_value(hass: HomeAssistant):
     """Test sensor restores numeric values correctly."""
-    from homeassistant.helpers import entity_registry as er
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+        },
+        entry_id="test_entry_123",
+    )
+    entry.add_to_hass(hass)
 
-    sensor_entity_id = "sensor.test_cleanup_total_files"
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Get the entity
-    registry = er.async_get(hass)
-    entity_entry = registry.async_get(sensor_entity_id)
-    assert entity_entry is not None
+    coordinator = entry.runtime_data
 
-    # Get the actual entity instance from hass.states and find the entity object
-    coordinator = init_integration.runtime_data
-
-    # Find the sensor entity in the coordinator's entities
-    sensor_entity = None
-    for platform in hass.data.get("entity_platform", {}).values():
-        if hasattr(platform, "entities"):
-            for entity in platform.entities:
-                if (
-                    hasattr(entity, "entity_id")
-                    and entity.entity_id == sensor_entity_id
-                ):
-                    sensor_entity = entity
-                    break
-        if sensor_entity:
-            break
-
-    assert sensor_entity is not None, f"Could not find entity {sensor_entity_id}"
-
-    # Manually set restored state to simulate what async_added_to_hass does
-    sensor_entity._restored_last_state = "42"
-    sensor_entity._restored_attributes = {
+    coordinator.data = {
+        "total_files": 42,
         "base_path": "/media/test",
         "pattern": "*.jpg",
         "retention_days": 7,
     }
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
 
-    # Clear coordinator data to force restoration fallback
+    state = hass.states.get("sensor.test_cleanup_total_files")
+    assert state is not None
+    assert state.state == "42"
+
+    await async_mock_restore_state_shutdown_restart(hass)
+
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
     coordinator.data = {}
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    # Check restored state - should fallback to restored value
-    state = hass.states.get(sensor_entity_id)
+    state = hass.states.get("sensor.test_cleanup_total_files")
     assert state is not None
     assert state.state == "42"
 
 
-async def test_sensor_restore_timestamp_value(hass: HomeAssistant, init_integration):
+async def test_sensor_restore_timestamp_value(hass: HomeAssistant):
     """Test sensor restores timestamp values correctly."""
-    from homeassistant.helpers import entity_registry as er
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+        },
+        entry_id="test_entry_456",
+    )
+    entry.add_to_hass(hass)
 
-    sensor_entity_id = "sensor.test_cleanup_last_scan"
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Get the entity
-    registry = er.async_get(hass)
-    entity_entry = registry.async_get(sensor_entity_id)
-    assert entity_entry is not None
+    coordinator = entry.runtime_data
 
-    # Find the sensor entity
-    coordinator = init_integration.runtime_data
-    sensor_entity = None
-    for platform in hass.data.get("entity_platform", {}).values():
-        if hasattr(platform, "entities"):
-            for entity in platform.entities:
-                if (
-                    hasattr(entity, "entity_id")
-                    and entity.entity_id == sensor_entity_id
-                ):
-                    sensor_entity = entity
-                    break
-        if sensor_entity:
-            break
+    test_timestamp = datetime(2024, 1, 7, 15, 30, 45, tzinfo=UTC)
+    coordinator.data = {
+        "last_scan": test_timestamp,
+        "base_path": "/media/test",
+        "pattern": "*.jpg",
+        "retention_days": 7,
+    }
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
 
-    assert sensor_entity is not None
+    state = hass.states.get("sensor.test_cleanup_last_scan")
+    assert state is not None
+    assert state.state == "2024-01-07T15:30:45+00:00"
 
-    # Manually set restored timestamp state
-    sensor_entity._restored_last_state = "2024-01-07T15:30:45"
-    sensor_entity._restored_attributes = {"base_path": "/media/test"}
+    await async_mock_restore_state_shutdown_restart(hass)
 
-    # Clear coordinator data to force restoration fallback
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
     coordinator.data = {}
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    # Timestamp should be restored as datetime object
-    state = hass.states.get(sensor_entity_id)
+    state = hass.states.get("sensor.test_cleanup_last_scan")
     assert state is not None
-    # The state should be converted to a valid timestamp
-    assert state.state is not None
+    assert state.state == "2024-01-07T15:30:45+00:00"
 
 
-async def test_sensor_current_data_overrides_restored(
-    hass: HomeAssistant, init_integration
-):
+async def test_sensor_current_data_overrides_restored(hass: HomeAssistant):
     """Test that current coordinator data overrides restored state."""
-    from homeassistant.helpers import entity_registry as er
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+        },
+        entry_id="test_entry_789",
+    )
+    entry.add_to_hass(hass)
 
-    sensor_entity_id = "sensor.test_cleanup_total_files"
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Get the entity
-    registry = er.async_get(hass)
-    entity_entry = registry.async_get(sensor_entity_id)
-    assert entity_entry is not None
+    coordinator = entry.runtime_data
 
-    # Find the sensor entity
-    coordinator = init_integration.runtime_data
-    sensor_entity = None
-    for platform in hass.data.get("entity_platform", {}).values():
-        if hasattr(platform, "entities"):
-            for entity in platform.entities:
-                if (
-                    hasattr(entity, "entity_id")
-                    and entity.entity_id == sensor_entity_id
-                ):
-                    sensor_entity = entity
-                    break
-        if sensor_entity:
-            break
-
-    assert sensor_entity is not None
-
-    # Set restored state
-    sensor_entity._restored_last_state = "42"
-
-    # Set coordinator with current data
-    coordinator.data = {"total_files": 123}  # Current data should win
+    coordinator.data = {"total_files": 42}
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    # Current data should override restored state
-    state = hass.states.get(sensor_entity_id)
+    state = hass.states.get("sensor.test_cleanup_total_files")
     assert state is not None
-    assert state.state == "123"  # Current data, not restored "42"
+    assert state.state == "42"
+
+    await async_mock_restore_state_shutdown_restart(hass)
+
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    coordinator.data = {"total_files": 123}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.test_cleanup_total_files")
+    assert state is not None
+    assert state.state == "123"
 
 
-async def test_binary_sensor_restore_on_state(hass: HomeAssistant, init_integration):
+async def test_binary_sensor_restore_on_state(hass: HomeAssistant):
     """Test binary sensor restores 'on' state correctly."""
-    from homeassistant.helpers import entity_registry as er
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+        },
+        entry_id="test_entry_binary_1",
+    )
+    entry.add_to_hass(hass)
 
-    sensor_entity_id = "binary_sensor.test_cleanup_path_available"
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Get the entity
-    registry = er.async_get(hass)
-    entity_entry = registry.async_get(sensor_entity_id)
-    assert entity_entry is not None
+    coordinator = entry.runtime_data
 
-    # Get the actual entity instance
-    coordinator = init_integration.runtime_data
+    coordinator.data = {"path_available": True}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
 
-    # Find the binary sensor entity
-    binary_sensor_entity = None
-    for platform in hass.data.get("entity_platform", {}).values():
-        if hasattr(platform, "entities"):
-            for entity in platform.entities:
-                if (
-                    hasattr(entity, "entity_id")
-                    and entity.entity_id == sensor_entity_id
-                ):
-                    binary_sensor_entity = entity
-                    break
-        if binary_sensor_entity:
-            break
+    state = hass.states.get("binary_sensor.test_cleanup_path_available")
+    assert state is not None
+    assert state.state == "on"
 
-    assert binary_sensor_entity is not None, f"Could not find entity {sensor_entity_id}"
+    await async_mock_restore_state_shutdown_restart(hass)
 
-    # Manually set restored state to simulate what async_added_to_hass does
-    binary_sensor_entity._restored_last_state = "on"
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
 
-    # Clear coordinator data to force restoration
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
     coordinator.data = {}
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    # Should restore the on state
-    state = hass.states.get(sensor_entity_id)
+    state = hass.states.get("binary_sensor.test_cleanup_path_available")
     assert state is not None
     assert state.state == "on"
 
 
-async def test_binary_sensor_current_data_overrides_restored(
-    hass: HomeAssistant, init_integration
-):
+async def test_binary_sensor_current_data_overrides_restored(hass: HomeAssistant):
     """Test that current coordinator data overrides restored state for binary sensor."""
-    from homeassistant.helpers import entity_registry as er
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+        },
+        entry_id="test_entry_binary_2",
+    )
+    entry.add_to_hass(hass)
 
-    sensor_entity_id = "binary_sensor.test_cleanup_path_available"
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Get the entity
-    registry = er.async_get(hass)
-    entity_entry = registry.async_get(sensor_entity_id)
-    assert entity_entry is not None
+    coordinator = entry.runtime_data
 
-    # Find the binary sensor entity
-    coordinator = init_integration.runtime_data
-    binary_sensor_entity = None
-    for platform in hass.data.get("entity_platform", {}).values():
-        if hasattr(platform, "entities"):
-            for entity in platform.entities:
-                if (
-                    hasattr(entity, "entity_id")
-                    and entity.entity_id == sensor_entity_id
-                ):
-                    binary_sensor_entity = entity
-                    break
-        if binary_sensor_entity:
-            break
-
-    assert binary_sensor_entity is not None
-
-    # Set restored state as "off"
-    binary_sensor_entity._restored_last_state = "off"
-
-    # Set coordinator with current data
-    coordinator.data = {"path_available": False}  # Current data should win
+    coordinator.data = {"path_available": False}
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    # Current data should override restored state
-    state = hass.states.get(sensor_entity_id)
+    state = hass.states.get("binary_sensor.test_cleanup_path_available")
     assert state is not None
-    assert state.state == "off"  # Current data, not restored "off"
+    assert state.state == "off"
+
+    await async_mock_restore_state_shutdown_restart(hass)
+
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    coordinator.data = {"path_available": False}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("binary_sensor.test_cleanup_path_available")
+    assert state is not None
+    assert state.state == "off"
 
 
-async def test_restoration_exception_handling(hass: HomeAssistant, init_integration):
+async def test_restoration_exception_handling(hass: HomeAssistant):
     """Test graceful handling of restoration failures."""
-    from homeassistant.helpers import entity_registry as er
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+        },
+        entry_id="test_entry_exception",
+    )
+    entry.add_to_hass(hass)
 
-    sensor_entity_id = "sensor.test_cleanup_total_files"
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.glob", return_value=[]),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Get the entity
-    registry = er.async_get(hass)
-    entity_entry = registry.async_get(sensor_entity_id)
-    assert entity_entry is not None
+    coordinator = entry.runtime_data
 
-    # Find the sensor entity
-    coordinator = init_integration.runtime_data
-    sensor_entity = None
-    for platform in hass.data.get("entity_platform", {}).values():
-        if hasattr(platform, "entities"):
-            for entity in platform.entities:
-                if (
-                    hasattr(entity, "entity_id")
-                    and entity.entity_id == sensor_entity_id
-                ):
-                    sensor_entity = entity
-                    break
-        if sensor_entity:
-            break
-
-    assert sensor_entity is not None
-
-    # Simulate exception during restoration - set invalid restored state to None
-    sensor_entity._restored_last_state = None
-    sensor_entity._restored_attributes = {}
-
-    # Should not crash during operation
     coordinator.data = {}
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    # Integration should still work normally without restoration
-    state = hass.states.get(sensor_entity_id)
+    state = hass.states.get("sensor.test_cleanup_total_files")
     assert state is not None
-    # Should show current state or unavailable, not crash
