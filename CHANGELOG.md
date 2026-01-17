@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.0.10]
+
+### Added
+- State restoration support: Sensor values now persist across Home Assistant restarts
+  - File count sensors retain their values (total files, older than retention, deleted last run)
+  - Timestamp sensors maintain last scan and cleanup times
+  - Performance metrics preserved (scan/cleanup duration)
+  - Binary sensor state persists (path availability)
+
+### Changed
+- Test coverage improved to 90%+ with comprehensive state restoration testing
+- All tests verified on Python 3.11 and 3.12
+
 ## [1.0.9]
 
 ### Fixed
@@ -82,6 +95,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Config flow for UI configuration
 - Glob pattern support
 
+[1.0.10]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.6...v1.0.7
