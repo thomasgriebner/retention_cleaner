@@ -13,6 +13,7 @@ from homeassistant.const import UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -111,7 +112,7 @@ async def async_setup_entry(
 
 
 class RetentionCleanerSensor(
-    CoordinatorEntity[RetentionCleanerCoordinator], SensorEntity
+    RestoreEntity, CoordinatorEntity[RetentionCleanerCoordinator], SensorEntity
 ):
     def __init__(
         self,
@@ -152,15 +153,86 @@ class RetentionCleanerSensor(
             model="Folder retention rule",
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Entity has been added to hass."""
+        await super().async_added_to_hass()
+
+        try:
+            if (last_state := await self.async_get_last_state()) is not None:
+                self._restored_last_state = last_state.state
+                self._restored_attributes = last_state.attributes or {}
+            else:
+                self._restored_last_state = None
+                self._restored_attributes = {}
+        except Exception:
+            # Gracefully handle restore failures
+            self._restored_last_state = None
+            self._restored_attributes = {}
+
     @property
     def native_value(self) -> Any:
-        return (self.coordinator.data or {}).get(self._key)
+        """Return the current value or restored value."""
+        current_value = (self.coordinator.data or {}).get(self._key)
+
+        if current_value is not None:
+            return current_value
+
+        restored_state = getattr(self, "_restored_last_state", None)
+        if restored_state is not None and restored_state not in (
+            "unknown",
+            "unavailable",
+        ):
+            # Timestamp sensors: convert string to datetime for HA validation
+            if self._key in ("last_scan", "last_cleanup"):
+                if isinstance(restored_state, str):
+                    try:
+                        from datetime import datetime
+
+                        # Try to parse ISO format timestamp
+                        return datetime.fromisoformat(
+                            restored_state.replace("Z", "+00:00")
+                        )
+                    except (ValueError, AttributeError):
+                        return None
+                return restored_state
+
+            # Numeric sensors: convert to int with fallback
+            if self._key in (
+                "total_files",
+                "older_than_retention",
+                "deleted_last_run",
+                "deleted_bytes_last_run",
+                "last_scan_duration_ms",
+                "last_cleanup_duration_ms",
+            ):
+                try:
+                    if isinstance(restored_state, str) and restored_state.isdigit():
+                        return int(restored_state)
+                    if isinstance(restored_state, int | float):
+                        return int(restored_state)
+                    return 0
+                except (ValueError, TypeError):
+                    return 0
+
+            # Other sensors: return as-is
+            return restored_state
+
+        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         d = self.coordinator.data or {}
-        return {
+        current_attrs = {
             "base_path": d.get("base_path"),
             "pattern": d.get("pattern"),
             "retention_days": d.get("retention_days"),
         }
+
+        # Use restored attributes as fallback when no current data
+        restored_attrs = getattr(self, "_restored_attributes", {})
+        if not d and restored_attrs:
+            for key in ["base_path", "pattern", "retention_days"]:
+                if key not in current_attrs or current_attrs[key] is None:
+                    current_attrs[key] = restored_attrs.get(key)
+
+        return current_attrs
