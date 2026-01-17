@@ -56,7 +56,7 @@ Each cleanup rule creates a device with the following configuration options:
 |-----------|------|---------|-------------|
 | **Base Path** | string | - | Root directory to clean (must start with `/media/`) |
 | **File Pattern** | string | `**/*.jpg` | Glob pattern for matching files |
-| **Retention Days** | integer | `30` | Keep files newer than this many days |
+| **Retention Days** | integer | `30` | Keep files newer than this many days (max: 3650 / 10 years) |
 | **Cleanup Time** | time | `03:15` | Daily automatic cleanup schedule (HH:MM) |
 | **Dry Run** | boolean | `false` | Test mode - count files without deleting |
 | **Max Deletes** | integer | `5000` | Safety limit per cleanup run |
@@ -73,6 +73,7 @@ Each cleanup rule creates a device with the following configuration options:
 ### Safety Guidelines
 
 - Only `/media/` paths are allowed for security
+- Symlinks are blocked at any level to prevent path traversal attacks
 - Patterns like `*` or `**/*` are blocked to prevent accidents
 - Always test with **dry-run mode** enabled first
 - Use **Scan now** button to preview what will be deleted
