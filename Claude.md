@@ -24,6 +24,31 @@ button.py         → Manual scan/cleanup triggers
 
 ---
 
+## SPECIALIZED AGENTS
+
+This project uses specialized agents for different development tasks:
+
+| Agent | Purpose | When to Use |
+|-------|---------|-------------|
+| **ha-integration-developer** | Implement features and code changes | • Adding new features<br>• Refactoring existing code<br>• Bug fixes in implementation<br>• Safety-critical changes |
+| **ha-integration-test-writer** | Write, fix, and improve tests | • Fixing failing tests<br>• Adding test coverage<br>• Validating implementations<br>• Test refactoring |
+
+### Pair Programming Workflow
+
+**For new features:**
+1. Spawn `ha-integration-developer` to implement feature
+2. Developer spawns `ha-integration-test-writer` for comprehensive testing
+3. Iterate until all tests pass on Python 3.11 & 3.12 (90%+ coverage)
+
+**For bug fixes:**
+1. Spawn `ha-integration-test-writer` to write failing test
+2. Spawn `ha-integration-developer` to fix bug
+3. Test agent verifies fix on both Python versions
+
+Both agents can run tests locally and work independently or together as needed.
+
+---
+
 ## CRITICAL SAFETY RULES
 
 ### 1. File Deletion Safety (MANDATORY)
