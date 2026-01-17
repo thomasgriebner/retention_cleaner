@@ -13,12 +13,14 @@ from .const import (
     CONF_BASE_PATH,
     CONF_DRY_RUN,
     CONF_EXCEPT_EXTENSIONS,
+    CONF_KEEP_MINIMUM_FILES,
     CONF_MAX_DELETES,
     CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
     DEFAULT_DRY_RUN,
+    DEFAULT_KEEP_MINIMUM_FILES,
     DEFAULT_MAX_DELETES,
     DEFAULT_PATTERN,
     DEFAULT_RETENTION_DAYS,
@@ -53,6 +55,8 @@ def _map_validation_error_to_fields(error_key: str) -> dict[str, str]:
         errors[CONF_PATTERN] = error_key
     elif error_key in ("retention_days_negative", "retention_days_too_large"):
         errors[CONF_RETENTION_DAYS] = error_key
+    elif error_key in ("keep_minimum_negative", "keep_minimum_too_large"):
+        errors[CONF_KEEP_MINIMUM_FILES] = error_key
     elif error_key in (
         "extension_must_start_with_dot",
         "extension_no_wildcards",
@@ -232,6 +236,37 @@ def _validate_extensions(value: str) -> str:
     return value
 
 
+def _validate_keep_minimum_files(value: int, max_deletes: int) -> int:
+    """Validate keep_minimum_files setting.
+
+    Args:
+        value: Number of minimum files to keep.
+        max_deletes: Maximum number of files that can be deleted per run.
+
+    Returns:
+        int: Validated minimum files value.
+
+    Raises:
+        vol.Invalid: If value is out of range (0-10000).
+    """
+    if value < 0:
+        _LOGGER.warning("Invalid keep_minimum_files: %d (must be >= 0)", value)
+        raise vol.Invalid("keep_minimum_negative")
+    if value > 10000:
+        _LOGGER.warning("Invalid keep_minimum_files: %d (must be <= 10000)", value)
+        raise vol.Invalid("keep_minimum_too_large")
+
+    # Warning if keep_minimum > max_deletes (unusual but valid)
+    if value > max_deletes:
+        _LOGGER.warning(
+            "keep_minimum_files (%d) exceeds max_deletes (%d) - this may prevent deletions",
+            value,
+            max_deletes,
+        )
+
+    return value
+
+
 def _validate_pattern_and_extensions(user_input: dict) -> dict:
     """Validate mutual exclusion between pattern and extension filters.
 
@@ -319,6 +354,16 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if retention_days > 3650:  # 10 years maximum
                     raise vol.Invalid("retention_days_too_large")
 
+                max_deletes = int(user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES))
+                keep_minimum_files = _validate_keep_minimum_files(
+                    int(
+                        user_input.get(
+                            CONF_KEEP_MINIMUM_FILES, DEFAULT_KEEP_MINIMUM_FILES
+                        )
+                    ),
+                    max_deletes,
+                )
+
                 data = {
                     CONF_BASE_PATH: base_path,
                     CONF_PATTERN: validated[CONF_PATTERN],
@@ -327,9 +372,8 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_RETENTION_DAYS: retention_days,
                     CONF_RUN_AT: run_at,
                     CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
-                    CONF_MAX_DELETES: int(
-                        user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)
-                    ),
+                    CONF_MAX_DELETES: max_deletes,
+                    CONF_KEEP_MINIMUM_FILES: keep_minimum_files,
                 }
 
                 title = base_path.split("/")[-1] or base_path
@@ -355,6 +399,8 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "pattern_invalid_syntax",
                     "retention_days_negative",
                     "retention_days_too_large",
+                    "keep_minimum_negative",
+                    "keep_minimum_too_large",
                     "extension_must_start_with_dot",
                     "extension_no_wildcards",
                     "extension_no_paths",
@@ -379,6 +425,9 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_MAX_DELETES, default=DEFAULT_MAX_DELETES): vol.Coerce(
                     int
                 ),
+                vol.Optional(
+                    CONF_KEEP_MINIMUM_FILES, default=DEFAULT_KEEP_MINIMUM_FILES
+                ): vol.Coerce(int),
             }
         )
 
@@ -418,6 +467,16 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 if retention_days > 3650:  # 10 years maximum
                     raise vol.Invalid("retention_days_too_large")
 
+                max_deletes = int(user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES))
+                keep_minimum_files = _validate_keep_minimum_files(
+                    int(
+                        user_input.get(
+                            CONF_KEEP_MINIMUM_FILES, DEFAULT_KEEP_MINIMUM_FILES
+                        )
+                    ),
+                    max_deletes,
+                )
+
                 _LOGGER.info(
                     "Updating config for path: %s (pattern: %s, only_ext: %s, except_ext: %s, retention: %d days)",
                     base_path,
@@ -438,9 +497,8 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                         CONF_DRY_RUN: bool(
                             user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)
                         ),
-                        CONF_MAX_DELETES: int(
-                            user_input.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES)
-                        ),
+                        CONF_MAX_DELETES: max_deletes,
+                        CONF_KEEP_MINIMUM_FILES: keep_minimum_files,
                     },
                 )
 
@@ -455,6 +513,8 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                     "pattern_invalid_syntax",
                     "retention_days_negative",
                     "retention_days_too_large",
+                    "keep_minimum_negative",
+                    "keep_minimum_too_large",
                     "extension_must_start_with_dot",
                     "extension_no_wildcards",
                     "extension_no_paths",
@@ -495,6 +555,12 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_MAX_DELETES,
                     default=current.get(CONF_MAX_DELETES, DEFAULT_MAX_DELETES),
+                ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_KEEP_MINIMUM_FILES,
+                    default=current.get(
+                        CONF_KEEP_MINIMUM_FILES, DEFAULT_KEEP_MINIMUM_FILES
+                    ),
                 ): vol.Coerce(int),
             }
         )

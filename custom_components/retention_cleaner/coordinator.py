@@ -19,12 +19,14 @@ from .const import (
     CONF_BASE_PATH,
     CONF_DRY_RUN,
     CONF_EXCEPT_EXTENSIONS,
+    CONF_KEEP_MINIMUM_FILES,
     CONF_MAX_DELETES,
     CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
     COORDINATOR_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_KEEP_MINIMUM_FILES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -319,6 +321,7 @@ def _cleanup_folder(
     max_deletes: int,
     only_ext_set: set[str] | None = None,
     except_ext_set: set[str] | None = None,
+    keep_minimum_files: int = 0,
 ) -> CleanupResult:
     """Delete files older than retention period with safety limits.
 
@@ -334,6 +337,7 @@ def _cleanup_folder(
         max_deletes: Maximum number of files to delete in one run.
         only_ext_set: Set of extensions to exclusively delete (lowercase with dots).
         except_ext_set: Set of extensions to never delete (lowercase with dots).
+        keep_minimum_files: Minimum number of newest files to always preserve.
 
     Returns:
         CleanupResult: Contains number of deleted files, remaining files,
@@ -344,6 +348,8 @@ def _cleanup_folder(
                      or unexpected errors during cleanup.
 
     Safety:
+        - Always preserves the newest keep_minimum_files files regardless of age.
+        - Protected files are excluded from deletion candidates BEFORE max_deletes is applied.
         - Respects max_deletes limit to prevent accidental mass deletion.
         - Dry-run mode allows safe preview of what would be deleted.
         - Files already deleted (race condition) are counted as success.
@@ -361,13 +367,14 @@ def _cleanup_folder(
     if only_ext_set or except_ext_set:
         search_pattern = ALL_FILES_PATTERN
         _LOGGER.debug(
-            "Starting cleanup of %s with extension filter (only=%d exts, except=%d exts, retention: %d days, dry_run: %s, max_deletes: %d)",
+            "Starting cleanup of %s with extension filter (only=%d exts, except=%d exts, retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d)",
             base_path,
             len(only_ext_set),
             len(except_ext_set),
             retention_days,
             dry_run,
             max_deletes,
+            keep_minimum_files,
         )
     else:
         # Safety check: ensure pattern is not empty
@@ -377,12 +384,13 @@ def _cleanup_folder(
             )
         search_pattern = pattern
         _LOGGER.debug(
-            "Starting cleanup of %s with pattern '%s' (retention: %d days, dry_run: %s, max_deletes: %d)",
+            "Starting cleanup of %s with pattern '%s' (retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d)",
             base_path,
             pattern,
             retention_days,
             dry_run,
             max_deletes,
+            keep_minimum_files,
         )
 
     if not base.exists() or not base.is_dir():
@@ -403,6 +411,10 @@ def _cleanup_folder(
     older_remaining = 0
 
     try:
+        # Step 1: Collect all matching files with metadata
+        files_with_metadata: list[tuple[Path, float, int]] = []
+        inaccessible_files = 0
+
         for p in base.glob(search_pattern):
             if not p.is_file():
                 continue
@@ -414,8 +426,7 @@ def _cleanup_folder(
             try:
                 # Get file stats (mtime and size) in one call for efficiency
                 file_stat = p.stat()
-                mtime = file_stat.st_mtime
-                file_size = file_stat.st_size
+                files_with_metadata.append((p, file_stat.st_mtime, file_stat.st_size))
             except FileNotFoundError:
                 # Race condition: file was deleted between glob and stat
                 _LOGGER.debug(
@@ -424,17 +435,40 @@ def _cleanup_folder(
                 continue  # Don't count files that no longer exist
             except PermissionError as err:
                 _LOGGER.warning("No permission to access file %s: %s", p.name, err)
-                total_after += 1
+                inaccessible_files += 1
                 continue
             except OSError as err:
                 _LOGGER.debug("Cannot stat file %s: %s", p.name, err)
-                total_after += 1
+                inaccessible_files += 1
                 continue
 
+        # Step 2: Sort by mtime descending (newest first)
+        files_with_metadata.sort(key=lambda x: x[1], reverse=True)
+
+        # Step 3: Determine protected files (keep_minimum_files newest)
+        protected_count = min(keep_minimum_files, len(files_with_metadata))
+        protected_files = {f[0] for f in files_with_metadata[:protected_count]}
+
+        if protected_count > 0:
+            _LOGGER.debug(
+                "Protecting %d newest files due to keep_minimum_files threshold",
+                protected_count,
+            )
+
+        # Step 4: Process files for deletion
+        for file_path, mtime, file_size in files_with_metadata:
+            # Check if file is protected by keep_minimum_files
+            if file_path in protected_files:
+                total_after += 1
+                if mtime < cutoff_ts:
+                    older_remaining += 1  # File is old but protected
+                continue
+
+            # Check if file is older than retention
             if mtime < cutoff_ts:
-                # file is older than retention
+                # File is older than retention
                 if dry_run:
-                    _LOGGER.debug("[DRY-RUN] Would delete: %s", p.name)
+                    _LOGGER.debug("[DRY-RUN] Would delete: %s", file_path.name)
                     total_after += 1
                     older_remaining += 1
                     continue
@@ -451,19 +485,22 @@ def _cleanup_folder(
                     continue
 
                 try:
-                    p.unlink()
+                    file_path.unlink()
                     deleted += 1
                     deleted_bytes += file_size
                     _LOGGER.debug(
-                        "Deleted file: %s (size: %d bytes)", p.name, file_size
+                        "Deleted file: %s (size: %d bytes)", file_path.name, file_size
                     )
-                    # deleted -> not remaining
                 except FileNotFoundError:
                     # Race condition: file was already deleted
-                    _LOGGER.debug("File already deleted (race condition): %s", p.name)
+                    _LOGGER.debug(
+                        "File already deleted (race condition): %s", file_path.name
+                    )
                     deleted += 1  # Count as successful since goal achieved
                 except PermissionError as err:
-                    _LOGGER.warning("No permission to delete file %s: %s", p.name, err)
+                    _LOGGER.warning(
+                        "No permission to delete file %s: %s", file_path.name, err
+                    )
                     total_after += 1
                     older_remaining += 1
                 except OSError as err:
@@ -476,15 +513,18 @@ def _cleanup_folder(
                     else:
                         _LOGGER.warning(
                             "Failed to delete file %s: [errno %d] %s",
-                            p.name,
+                            file_path.name,
                             err.errno or 0,
                             err,
                         )
                         total_after += 1
                         older_remaining += 1
             else:
-                # file is within retention
+                # File is within retention period
                 total_after += 1
+
+        # Add inaccessible files to total_after
+        total_after += inaccessible_files
 
     except PermissionError as e:
         _LOGGER.error("No permission to access directory %s: %s", base_path, str(e))
@@ -648,6 +688,15 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return int(self.cfg.get(CONF_MAX_DELETES, 5000))
 
     @property
+    def keep_minimum_files(self) -> int:
+        """Get minimum number of files to always keep.
+
+        Returns:
+            int: Minimum file threshold (default: 0).
+        """
+        return int(self.cfg.get(CONF_KEEP_MINIMUM_FILES, DEFAULT_KEEP_MINIMUM_FILES))
+
+    @property
     def run_at(self) -> dt_time:
         """Get the scheduled daily cleanup time.
 
@@ -764,6 +813,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.max_deletes,
                 self.only_extensions_set,
                 self.except_extensions_set,
+                self.keep_minimum_files,
                 max_retries=2,  # Fewer retries for cleanup (safety)
                 delay=1.0,  # Longer initial delay
             )
@@ -861,6 +911,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "retention_days": self.retention_days,
             "dry_run": self.dry_run,
             "max_deletes": self.max_deletes,
+            "keep_minimum_files": self.keep_minimum_files,
             "run_at": self.cfg.get(CONF_RUN_AT, "03:15"),
             "path_available": result.path_available,
             "total_files": result.total_files,

@@ -10,12 +10,14 @@ CONF_DRY_RUN = "dry_run"
 CONF_MAX_DELETES = "max_deletes"
 CONF_ONLY_EXTENSIONS = "only_extensions"
 CONF_EXCEPT_EXTENSIONS = "except_extensions"
+CONF_KEEP_MINIMUM_FILES = "keep_minimum_files"
 
 DEFAULT_PATTERN = "**/*.jpg"
 DEFAULT_RETENTION_DAYS = 30
 DEFAULT_RUN_AT = "03:15"
 DEFAULT_DRY_RUN = False
 DEFAULT_MAX_DELETES = 5000
+DEFAULT_KEEP_MINIMUM_FILES = 0
 
 # Pattern constants
 ALL_FILES_PATTERN = "**/*"

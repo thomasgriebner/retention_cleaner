@@ -26,6 +26,7 @@ TEST_FILE_AGE_DAYS = 8  # Files older than retention
 TEST_MAX_DELETES = 100
 TEST_DRY_RUN = True
 TEST_RUN_AT = "02:00"
+TEST_KEEP_MINIMUM_FILES = 5
 
 
 def pytest_configure(config):
