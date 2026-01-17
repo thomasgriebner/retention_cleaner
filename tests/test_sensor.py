@@ -203,3 +203,184 @@ async def test_sensor_unique_ids_stable(hass: HomeAssistant, init_integration):
         # Find entity by unique_id
         entity = registry.async_get_entity_id("sensor", DOMAIN, expected_unique_id)
         assert entity is not None, f"Sensor {sensor_type} not found"
+
+
+async def test_sensor_restoration_exception_handling(
+    hass: HomeAssistant, init_integration
+):
+    """Test sensor handles restoration exceptions gracefully (lines 167-170)."""
+    from unittest.mock import patch
+
+    from custom_components.retention_cleaner.sensor import RetentionCleanerSensor
+
+    coordinator = init_integration.runtime_data
+
+    entity = RetentionCleanerSensor(
+        coordinator,
+        init_integration,
+        "total_files",
+        "Total files",
+        "files",
+        "mdi:file-multiple",
+    )
+    entity.hass = hass
+    entity.entity_id = "sensor.test_exception"
+
+    with patch.object(
+        entity,
+        "async_get_last_state",
+        side_effect=RuntimeError("Simulated restoration error"),
+    ):
+        await entity.async_added_to_hass()
+
+    # Exception should be caught and both restored values set to None/empty dict
+    assert entity._restored_last_state is None
+    assert entity._restored_attributes == {}
+
+    # Entity should still function normally
+    coordinator.data = {"total_files": 42}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    assert entity.native_value == 42
+
+
+async def test_sensor_restore_string_digit(hass: HomeAssistant, init_integration):
+    """Test numeric sensor handles string digit restored state (line 210)."""
+    from custom_components.retention_cleaner.sensor import RetentionCleanerSensor
+
+    coordinator = init_integration.runtime_data
+
+    entity = RetentionCleanerSensor(
+        coordinator,
+        init_integration,
+        "total_files",
+        "Total files",
+        "files",
+        "mdi:file-multiple",
+    )
+    entity.hass = hass
+    entity.entity_id = "sensor.test_string_digit"
+
+    coordinator.data = {}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    entity._restored_last_state = "42"
+    assert entity.native_value == 42
+
+    entity._restored_last_state = "0"
+    assert entity.native_value == 0
+
+
+async def test_sensor_restore_int_float_direct(hass: HomeAssistant, init_integration):
+    """Test numeric sensor handles int/float restored state directly (line 212)."""
+    from custom_components.retention_cleaner.sensor import RetentionCleanerSensor
+
+    coordinator = init_integration.runtime_data
+
+    entity = RetentionCleanerSensor(
+        coordinator,
+        init_integration,
+        "total_files",
+        "Total files",
+        "files",
+        "mdi:file-multiple",
+    )
+    entity.hass = hass
+    entity.entity_id = "sensor.test_int_float"
+
+    coordinator.data = {}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    entity._restored_last_state = 42
+    assert entity.native_value == 42
+
+    entity._restored_last_state = 42.7
+    assert entity.native_value == 42
+
+
+async def test_sensor_restore_numeric_fallback(hass: HomeAssistant, init_integration):
+    """Test numeric sensor fallback to 0 for non-matching types (line 213)."""
+    from custom_components.retention_cleaner.sensor import RetentionCleanerSensor
+
+    coordinator = init_integration.runtime_data
+
+    entity = RetentionCleanerSensor(
+        coordinator,
+        init_integration,
+        "total_files",
+        "Total files",
+        "files",
+        "mdi:file-multiple",
+    )
+    entity.hass = hass
+    entity.entity_id = "sensor.test_fallback"
+
+    coordinator.data = {}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    entity._restored_last_state = []
+    assert entity.native_value == 0
+
+    entity._restored_last_state = {}
+    assert entity.native_value == 0
+
+    entity._restored_last_state = None
+    assert entity.native_value is None
+
+
+async def test_sensor_restore_numeric_type_error(hass: HomeAssistant, init_integration):
+    """Test numeric sensor handles TypeError during conversion (lines 214-215)."""
+    from unittest.mock import patch
+
+    from custom_components.retention_cleaner.sensor import RetentionCleanerSensor
+
+    coordinator = init_integration.runtime_data
+
+    entity = RetentionCleanerSensor(
+        coordinator,
+        init_integration,
+        "total_files",
+        "Total files",
+        "files",
+        "mdi:file-multiple",
+    )
+    entity.hass = hass
+    entity.entity_id = "sensor.test_type_error"
+
+    coordinator.data = {}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    entity._restored_last_state = "not_a_number"
+
+    with patch("builtins.int", side_effect=TypeError("Conversion error")):
+        assert entity.native_value == 0
+
+
+async def test_sensor_restore_other_sensor_type(hass: HomeAssistant, init_integration):
+    """Test sensor with non-standard key returns restored state as-is (line 218)."""
+    from custom_components.retention_cleaner.sensor import RetentionCleanerSensor
+
+    coordinator = init_integration.runtime_data
+
+    entity = RetentionCleanerSensor(
+        coordinator,
+        init_integration,
+        "unknown_key",
+        "Unknown sensor",
+        None,
+        "mdi:help",
+    )
+    entity.hass = hass
+    entity.entity_id = "sensor.test_other_type"
+
+    coordinator.data = {}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    entity._restored_last_state = "custom_value_123"
+    assert entity.native_value == "custom_value_123"

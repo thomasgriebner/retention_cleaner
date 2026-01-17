@@ -1,5 +1,13 @@
 """Test configuration and fixtures for retention_cleaner tests."""
 
+from pathlib import Path
+import sys
+
+# Ensure custom_components is importable (needed for direct function imports in sync tests)
+_repo_root = Path(__file__).parent.parent.absolute()
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
 import contextlib
 from unittest.mock import Mock, patch
 
@@ -9,6 +17,13 @@ import pytest
 
 # Enable pytest-homeassistant-custom-component fixtures
 pytest_plugins = "pytest_homeassistant_custom_component"
+
+
+def pytest_configure(config):
+    """Configure pytest - ensures custom_components is in sys.path early."""
+    repo_root = Path(__file__).parent.parent.absolute()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 
 # Test Helper Functions
@@ -213,105 +228,6 @@ async def init_integration_with_exception(hass, mock_setup_entry, request):
         side_effect=exception,
     ):
         yield entry
-
-
-@pytest.fixture
-async def init_integration_configurable(hass, mock_setup_entry, request):
-    """Highly configurable integration setup fixture.
-
-    Parameters via request.param:
-        - mock_glob: Whether to mock Path.glob (default: True)
-        - glob_return: Return value for Path.glob mock
-        - glob_side_effect: Side effect for Path.glob mock
-        - mock_exists: Whether to mock Path.exists (default: True)
-        - mock_is_dir: Whether to mock Path.is_dir (default: True)
-
-    Usage:
-        @pytest.mark.parametrize(
-            "init_integration_configurable",
-            [{"mock_glob": False, "mock_exists": True}],
-            indirect=True
-        )
-    """
-    params = request.param if hasattr(request, "param") else {}
-
-    mock_glob = params.get("mock_glob", True)
-    glob_return = params.get("glob_return", [])
-    glob_side_effect = params.get("glob_side_effect", None)
-    mock_exists = params.get("mock_exists", True)
-    mock_is_dir = params.get("mock_is_dir", True)
-
-    mock_setup_entry.add_to_hass(hass)
-
-    patches = []
-    if mock_exists:
-        patches.append(patch("pathlib.Path.exists", return_value=True))
-    if mock_is_dir:
-        patches.append(patch("pathlib.Path.is_dir", return_value=True))
-    if mock_glob:
-        if glob_side_effect:
-            patches.append(patch("pathlib.Path.glob", side_effect=glob_side_effect))
-        else:
-            patches.append(patch("pathlib.Path.glob", return_value=glob_return))
-
-    with contextlib.ExitStack() as stack:
-        for p in patches:
-            stack.enter_context(p)
-
-        assert await hass.config_entries.async_setup(mock_setup_entry.entry_id)
-        await hass.async_block_till_done()
-
-    assert hasattr(mock_setup_entry, "runtime_data")
-    assert mock_setup_entry.runtime_data is not None
-
-    return mock_setup_entry
-
-
-@pytest.fixture
-def mock_path_glob(tmp_path):
-    """Mock Path.glob to return test files."""
-    test_files = []
-    for i in range(10):
-        file = tmp_path / f"test_{i}.jpg"
-        file.touch()
-        # Set modification time for some files to be old
-        if i < 5:
-            import os
-            import time
-
-            old_time = time.time() - (8 * 24 * 60 * 60)  # 8 days old
-            os.utime(file, (old_time, old_time))
-        test_files.append(file)
-
-    with patch("pathlib.Path.glob") as mock_glob:
-        mock_glob.return_value = test_files
-        yield mock_glob, test_files
-
-
-@pytest.fixture
-def mock_file_system_operations():
-    """Mock file system operations for testing."""
-    with (
-        patch("pathlib.Path.exists") as mock_exists,
-        patch("pathlib.Path.is_dir") as mock_is_dir,
-        patch("pathlib.Path.unlink") as mock_unlink,
-        patch("pathlib.Path.stat") as mock_stat,
-    ):
-        mock_exists.return_value = True
-        mock_is_dir.return_value = True
-
-        # Mock stat to return file info
-        mock_stat_obj = Mock()
-        mock_stat_obj.st_mtime = 1700000000  # Fixed timestamp
-        mock_stat_obj.st_size = 1024  # 1KB file
-        mock_stat.return_value = mock_stat_obj
-
-        yield {
-            "exists": mock_exists,
-            "is_dir": mock_is_dir,
-            "unlink": mock_unlink,
-            "stat": mock_stat,
-        }
 
 
 @pytest.fixture

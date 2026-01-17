@@ -96,8 +96,6 @@ async def _retry_async_operation(func, *args, max_retries: int = 3, delay: float
     Raises:
         The last exception if all retries fail.
     """
-    last_error = None
-
     for attempt in range(max_retries):
         try:
             return await func(*args)
@@ -117,13 +115,8 @@ async def _retry_async_operation(func, *args, max_retries: int = 3, delay: float
                     str(e),
                 )
                 await asyncio.sleep(wait_time)
-                last_error = e
                 continue
             raise
-
-    # If we get here, all retries failed
-    if last_error:
-        raise last_error
 
 
 def _parse_run_at(value: str) -> dt_time:
