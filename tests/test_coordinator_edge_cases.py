@@ -163,6 +163,17 @@ def test_disk_full_error_handling():
     Note: We test the sync function directly to avoid threading issues with mocks.
     """
     import errno
+    from pathlib import Path
+    import sys
+
+    # Clear cached custom_components from pytest plugin
+    repo_root = Path(__file__).parent.parent.absolute()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    if "custom_components" in sys.modules:
+        del sys.modules["custom_components"]
+    if "custom_components.retention_cleaner" in sys.modules:
+        del sys.modules["custom_components.retention_cleaner"]
 
     from custom_components.retention_cleaner.coordinator import _cleanup_folder
 
@@ -207,6 +218,96 @@ def test_disk_full_error_handling():
         assert "disk full" in error_str or "no space" in error_str
 
 
+def test_read_only_filesystem_error_handling():
+    """Test handling of read-only filesystem errors during cleanup.
+
+    These are critical errors that should abort operation immediately.
+
+    Note: We test the sync function directly to avoid threading issues with mocks.
+    """
+    import errno
+    from pathlib import Path
+    import sys
+
+    # Ensure path is set and force reload of custom_components from correct location
+    repo_root = Path(__file__).parent.parent.absolute()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    # Clear cached custom_components from pytest plugin to force reimport from our repo
+    if "custom_components" in sys.modules:
+        del sys.modules["custom_components"]
+    if "custom_components.retention_cleaner" in sys.modules:
+        del sys.modules["custom_components.retention_cleaner"]
+
+    from custom_components.retention_cleaner.coordinator import _cleanup_folder
+
+    # Create OSError with EROFS (read-only filesystem)
+    readonly_error = OSError(errno.EROFS, "Read-only file system")
+    readonly_error.errno = errno.EROFS
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        # Create mock files with proper stat
+        mock_files = []
+        for i in range(5):
+            mock_file = Mock()
+            mock_file.name = f"file{i}.txt"
+            mock_file.is_file.return_value = True
+
+            mock_stat = Mock()
+            mock_stat.st_mtime = 1000000  # Old timestamp
+            mock_stat.st_size = 1024
+            mock_file.stat.return_value = mock_stat
+
+            # Make unlink raise read-only error
+            mock_file.unlink.side_effect = readonly_error
+            mock_files.append(mock_file)
+
+        mock_base.glob.return_value = mock_files
+
+        with pytest.raises(RuntimeError) as exc_info:
+            _cleanup_folder("/media/test", "*.txt", 7, False, 100)
+
+        error_str = str(exc_info.value).lower()
+        assert "read-only" in error_str or "filesystem" in error_str
+
+
+async def test_generic_exception_in_cleanup(hass: HomeAssistant, init_integration):
+    """Test handling of generic exceptions during async_run_cleanup_now.
+
+    Tests the generic exception handler (lines 620-623) that catches
+    exceptions NOT caught by the RuntimeError handler.
+    """
+    config_entry = init_integration
+    coordinator = config_entry.runtime_data
+
+    try:
+        # Mock _cleanup_folder to raise a non-RuntimeError exception
+        with patch(
+            "custom_components.retention_cleaner.coordinator._cleanup_folder"
+        ) as mock_cleanup:
+            # Use ValueError to test the generic Exception handler
+            mock_cleanup.side_effect = ValueError("Unexpected error in cleanup")
+
+            with pytest.raises(UpdateFailed) as exc_info:
+                await coordinator.async_run_cleanup_now()
+
+            # Verify the exception was wrapped in UpdateFailed
+            error_str = str(exc_info.value)
+            assert "Unexpected error in cleanup" in error_str
+
+    finally:
+        await coordinator.async_shutdown()
+        await hass.async_block_till_done()
+
+
 def test_memory_error_handling():
     """Test handling of memory errors during large directory scans.
 
@@ -214,6 +315,18 @@ def test_memory_error_handling():
 
     Note: We test the sync function directly to avoid threading issues with mocks.
     """
+    from pathlib import Path
+    import sys
+
+    # Clear cached custom_components from pytest plugin
+    repo_root = Path(__file__).parent.parent.absolute()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    if "custom_components" in sys.modules:
+        del sys.modules["custom_components"]
+    if "custom_components.retention_cleaner" in sys.modules:
+        del sys.modules["custom_components.retention_cleaner"]
+
     from custom_components.retention_cleaner.coordinator import _scan_folder
 
     def raise_memory_error(*args, **kwargs):

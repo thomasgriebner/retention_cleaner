@@ -1648,3 +1648,398 @@ async def test_cleanup_permission_denied(hass: HomeAssistant, init_integration):
     finally:
         await coordinator.async_shutdown()
         await hass.async_block_till_done()
+
+
+async def test_retry_async_operation_success_after_transient_errors():
+    """Test successful retry after transient errors (EAGAIN, EBUSY, EINTR)."""
+    import errno
+
+    from custom_components.retention_cleaner.coordinator import _retry_async_operation
+
+    for transient_errno in [errno.EAGAIN, errno.EBUSY, errno.EINTR]:
+        call_count = 0
+
+        async def mock_operation_succeeds_on_third_try(errno_val=transient_errno):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                err = OSError(f"Transient error {call_count}")
+                err.errno = errno_val
+                raise err
+            return f"success after {call_count} attempts"
+
+        result = await _retry_async_operation(
+            mock_operation_succeeds_on_third_try, max_retries=3, delay=0.01
+        )
+
+        assert result == "success after 3 attempts"
+        assert call_count == 3
+
+
+async def test_retry_async_operation_all_retries_exhausted():
+    """Test behavior when all retries are exhausted."""
+    import errno
+
+    from custom_components.retention_cleaner.coordinator import _retry_async_operation
+
+    call_count = 0
+
+    async def mock_operation_always_fails():
+        nonlocal call_count
+        call_count += 1
+        err = OSError(f"Persistent transient error {call_count}")
+        err.errno = errno.EBUSY
+        raise err
+
+    with pytest.raises(OSError) as exc_info:
+        await _retry_async_operation(
+            mock_operation_always_fails, max_retries=3, delay=0.01
+        )
+
+    assert call_count == 3
+    assert "Persistent transient error 3" in str(exc_info.value)
+    assert exc_info.value.errno == errno.EBUSY
+
+
+async def test_retry_async_operation_non_transient_error_immediate_raise():
+    """Test that non-transient errors and non-OSError exceptions are raised immediately without retry."""
+    import errno
+
+    from custom_components.retention_cleaner.coordinator import _retry_async_operation
+
+    call_count = 0
+
+    async def mock_operation_non_transient_error():
+        nonlocal call_count
+        call_count += 1
+        err = OSError("Non-transient error")
+        err.errno = errno.ENOENT
+        raise err
+
+    with pytest.raises(OSError) as exc_info:
+        await _retry_async_operation(
+            mock_operation_non_transient_error, max_retries=3, delay=0.01
+        )
+
+    assert call_count == 1
+    assert "Non-transient error" in str(exc_info.value)
+
+    call_count = 0
+
+    async def mock_operation_raises_value_error():
+        nonlocal call_count
+        call_count += 1
+        raise ValueError("Non-OSError exception")
+
+    with pytest.raises(ValueError) as exc_info:
+        await _retry_async_operation(
+            mock_operation_raises_value_error, max_retries=3, delay=0.01
+        )
+
+    assert call_count == 1
+    assert "Non-OSError exception" in str(exc_info.value)
+
+
+def test_scan_file_race_condition_handling():
+    """Test FileNotFoundError during file stat (race condition).
+
+    Coverage target: Lines 197-202 in coordinator.py
+    - File disappears between glob and stat
+    - File is NOT counted (total decremented)
+    - Scan continues without interruption
+    """
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        mock_file1 = Mock()
+        mock_file1.is_file.return_value = True
+        mock_file1.name = "file1.jpg"
+        mock_file1.stat.side_effect = FileNotFoundError("File disappeared")
+
+        mock_file2 = Mock()
+        mock_file2.is_file.return_value = True
+        mock_file2.name = "file2.jpg"
+        mock_stat2 = Mock()
+        mock_stat2.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_file2.stat.return_value = mock_stat2
+
+        mock_file3 = Mock()
+        mock_file3.is_file.return_value = True
+        mock_file3.name = "file3.jpg"
+        mock_stat3 = Mock()
+        mock_stat3.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_file3.stat.return_value = mock_stat3
+
+        mock_base.glob.return_value = [mock_file1, mock_file2, mock_file3]
+
+        result = _scan_folder("/media/test", "*.jpg", 7)
+
+        assert result.total_files == 2
+        assert result.older_than_retention == 2
+        assert result.path_available is True
+
+
+def test_scan_file_multiple_exception_types():
+    """Test scan with multiple file-level exceptions in same operation.
+
+    Coverage target: Lines 197-208 in coordinator.py
+    - Verify all three exception types can occur together
+    - Verify scan continues and produces accurate results
+    """
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        mock_file_race = Mock()
+        mock_file_race.is_file.return_value = True
+        mock_file_race.name = "race_condition.jpg"
+        mock_file_race.stat.side_effect = FileNotFoundError("Disappeared")
+
+        mock_file_perm = Mock()
+        mock_file_perm.is_file.return_value = True
+        mock_file_perm.name = "permission_denied.jpg"
+        mock_file_perm.stat.side_effect = PermissionError("Access denied")
+
+        mock_file_os = Mock()
+        mock_file_os.is_file.return_value = True
+        mock_file_os.name = "network_error.jpg"
+        mock_file_os.stat.side_effect = OSError("Network issue")
+
+        mock_file_old = Mock()
+        mock_file_old.is_file.return_value = True
+        mock_file_old.name = "old_file.jpg"
+        mock_stat_old = Mock()
+        mock_stat_old.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_file_old.stat.return_value = mock_stat_old
+
+        mock_file_new = Mock()
+        mock_file_new.is_file.return_value = True
+        mock_file_new.name = "new_file.jpg"
+        mock_stat_new = Mock()
+        mock_stat_new.st_mtime = time_module.time() - (2 * 24 * 60 * 60)
+        mock_file_new.stat.return_value = mock_stat_new
+
+        mock_base.glob.return_value = [
+            mock_file_race,
+            mock_file_perm,
+            mock_file_os,
+            mock_file_old,
+            mock_file_new,
+        ]
+
+        with patch(
+            "custom_components.retention_cleaner.coordinator._LOGGER"
+        ) as mock_logger:
+            result = _scan_folder("/media/test", "*.jpg", 7)
+
+            debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
+            warning_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
+
+            assert any("race condition" in msg.lower() for msg in debug_calls)
+            assert any("permission" in msg.lower() for msg in warning_calls)
+            assert any("Cannot stat file" in msg for msg in debug_calls)
+
+        assert result.total_files == 4
+        assert result.older_than_retention == 1
+        assert result.path_available is True
+
+
+def test_cleanup_skip_non_file_paths():
+    """Test that cleanup skips directories and non-file paths.
+
+    Coverage target: Line 294 in coordinator.py
+    - if not p.is_file(): continue
+    """
+    from custom_components.retention_cleaner.coordinator import _cleanup_folder
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        mock_directory = Mock()
+        mock_directory.is_file.return_value = False
+        mock_directory.name = "subdir"
+
+        mock_file = Mock()
+        mock_file.is_file.return_value = True
+        mock_file.name = "test.jpg"
+        mock_stat = Mock()
+        mock_stat.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat.st_size = 1024
+        mock_file.stat.return_value = mock_stat
+
+        mock_base.glob.return_value = [mock_directory, mock_file]
+
+        result = _cleanup_folder("/media/test", "*.jpg", 7, False, 100)
+
+        assert result.deleted == 1
+        assert result.total_after == 0
+        assert result.path_available is True
+
+
+def test_cleanup_file_not_found_during_unlink():
+    """Test FileNotFoundError during unlink (race condition).
+
+    Coverage target: Lines 343-346 in coordinator.py
+    - File already deleted by another process
+    - Should be counted as successful deletion
+    """
+    from custom_components.retention_cleaner.coordinator import _cleanup_folder
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        mock_file = Mock()
+        mock_file.is_file.return_value = True
+        mock_file.name = "already_deleted.jpg"
+        mock_stat = Mock()
+        mock_stat.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat.st_size = 4096
+        mock_file.stat.return_value = mock_stat
+        mock_file.unlink.side_effect = FileNotFoundError("Already deleted")
+
+        mock_base.glob.return_value = [mock_file]
+
+        with patch(
+            "custom_components.retention_cleaner.coordinator._LOGGER"
+        ) as mock_logger:
+            result = _cleanup_folder("/media/test", "*.jpg", 7, False, 100)
+
+            debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
+            assert any("already deleted" in msg.lower() for msg in debug_calls)
+
+        assert result.deleted == 1
+        assert result.total_after == 0
+        assert result.path_available is True
+
+
+def test_cleanup_multiple_exception_types():
+    """Test cleanup with all exception types in same operation.
+
+    Comprehensive coverage of Lines 301-366 in coordinator.py:
+    - FileNotFoundError during stat (race condition, not counted)
+    - PermissionError during stat (counted in total_after, not deleted)
+    - OSError during stat (counted in total_after, not deleted)
+    - FileNotFoundError during unlink (counted as deleted - goal achieved)
+    - OSError during unlink (counted in total_after and older_remaining)
+    - Successful deletion
+    """
+    import errno
+
+    from custom_components.retention_cleaner.coordinator import _cleanup_folder
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        mock_file_stat_race = Mock()
+        mock_file_stat_race.is_file.return_value = True
+        mock_file_stat_race.name = "stat_race.jpg"
+        mock_file_stat_race.stat.side_effect = FileNotFoundError(
+            "Disappeared during stat"
+        )
+
+        mock_file_stat_perm = Mock()
+        mock_file_stat_perm.is_file.return_value = True
+        mock_file_stat_perm.name = "stat_permission.jpg"
+        mock_file_stat_perm.stat.side_effect = PermissionError("Access denied")
+
+        mock_file_stat_os = Mock()
+        mock_file_stat_os.is_file.return_value = True
+        mock_file_stat_os.name = "stat_network.jpg"
+        mock_file_stat_os.stat.side_effect = OSError("Network timeout")
+
+        mock_file_unlink_race = Mock()
+        mock_file_unlink_race.is_file.return_value = True
+        mock_file_unlink_race.name = "unlink_race.jpg"
+        mock_stat_unlink_race = Mock()
+        mock_stat_unlink_race.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat_unlink_race.st_size = 1024
+        mock_file_unlink_race.stat.return_value = mock_stat_unlink_race
+        mock_file_unlink_race.unlink.side_effect = FileNotFoundError("Already deleted")
+
+        mock_file_unlink_io = Mock()
+        mock_file_unlink_io.is_file.return_value = True
+        mock_file_unlink_io.name = "unlink_io.jpg"
+        mock_stat_unlink_io = Mock()
+        mock_stat_unlink_io.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat_unlink_io.st_size = 2048
+        mock_file_unlink_io.stat.return_value = mock_stat_unlink_io
+        io_error = OSError("I/O error")
+        io_error.errno = errno.EIO
+        mock_file_unlink_io.unlink.side_effect = io_error
+
+        mock_file_ok = Mock()
+        mock_file_ok.is_file.return_value = True
+        mock_file_ok.name = "success.jpg"
+        mock_stat_ok = Mock()
+        mock_stat_ok.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat_ok.st_size = 3072
+        mock_file_ok.stat.return_value = mock_stat_ok
+
+        mock_file_new = Mock()
+        mock_file_new.is_file.return_value = True
+        mock_file_new.name = "new_file.jpg"
+        mock_stat_new = Mock()
+        mock_stat_new.st_mtime = time_module.time() - (2 * 24 * 60 * 60)
+        mock_stat_new.st_size = 512
+        mock_file_new.stat.return_value = mock_stat_new
+
+        mock_base.glob.return_value = [
+            mock_file_stat_race,
+            mock_file_stat_perm,
+            mock_file_stat_os,
+            mock_file_unlink_race,
+            mock_file_unlink_io,
+            mock_file_ok,
+            mock_file_new,
+        ]
+
+        with patch(
+            "custom_components.retention_cleaner.coordinator._LOGGER"
+        ) as mock_logger:
+            result = _cleanup_folder("/media/test", "*.jpg", 7, False, 100)
+
+            debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
+            warning_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
+
+            assert any("race condition" in msg.lower() for msg in debug_calls)
+            assert any("permission" in msg.lower() for msg in warning_calls)
+            assert any("Cannot stat file" in msg for msg in debug_calls)
+            assert any("already deleted" in msg.lower() for msg in debug_calls)
+
+        assert result.deleted == 2
+        assert result.total_after == 4
+        assert result.older_remaining == 1
+        assert result.path_available is True

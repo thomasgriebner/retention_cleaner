@@ -28,6 +28,10 @@ TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 
 
 def _validate_base_path(value: str) -> str:
+    """Validate base path is under /media/ and contains no symlinks.
+
+    Security: Rejects symlinks at any level to prevent TOCTOU attacks.
+    """
     value = (value or "").strip()
 
     # Basic check: must start with /media/
@@ -39,19 +43,32 @@ def _validate_base_path(value: str) -> str:
     from pathlib import Path
 
     try:
-        # Resolve the path to normalize it and follow any .. components
-        resolved_path = str(Path(value).resolve())
+        path_obj = Path(value)
 
-        # After resolution, the path must still be under /media/
+        # Security: Check for symlinks at ANY level
+        # This prevents TOCTOU (Time of Check Time of Use) attacks
+        if path_obj.is_symlink():
+            _LOGGER.warning("Symlink detected at path: %s", value)
+            raise vol.Invalid("base_path_not_media")
+
+        # Check all parent directories for symlinks
+        for parent in path_obj.parents:
+            if parent.is_symlink():
+                _LOGGER.warning("Symlink detected in parent path: %s", parent)
+                raise vol.Invalid("base_path_not_media")
+
+        # After validation, resolve and ensure still under /media/
+        resolved_path = str(path_obj.resolve())
         if not resolved_path.startswith("/media/"):
             _LOGGER.warning(
-                "Path traversal attempt detected: %s resolves to %s",
+                "Path traversal attempt: %s resolves to %s",
                 value,
                 resolved_path,
             )
             raise vol.Invalid("base_path_not_media")
-    except (OSError, ValueError) as e:
-        _LOGGER.warning("Invalid path provided: %s (%s)", value, e)
+
+    except OSError as e:
+        _LOGGER.warning("Invalid path: %s (%s)", value, e)
         raise vol.Invalid("base_path_not_media") from e
 
     return value.rstrip("/")
@@ -117,6 +134,8 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 if retention_days < 0:
                     raise vol.Invalid("retention_days_negative")
+                if retention_days > 3650:  # 10 years maximum
+                    raise vol.Invalid("retention_days_too_large")
 
                 data = {
                     CONF_BASE_PATH: base_path,
@@ -147,7 +166,10 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors[CONF_RUN_AT] = error_key
                 elif error_key in ("pattern_too_broad", "pattern_invalid_syntax"):
                     errors[CONF_PATTERN] = error_key
-                elif error_key == "retention_days_negative":
+                elif error_key in (
+                    "retention_days_negative",
+                    "retention_days_too_large",
+                ):
                     errors[CONF_RETENTION_DAYS] = error_key
                 else:
                     _LOGGER.error("Unexpected validation error: %s", str(e))
@@ -201,6 +223,8 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 )
                 if retention_days < 0:
                     raise vol.Invalid("retention_days_negative")
+                if retention_days > 3650:  # 10 years maximum
+                    raise vol.Invalid("retention_days_too_large")
 
                 _LOGGER.info(
                     "Updating config for path: %s (pattern: %s, retention: %d days)",
@@ -232,7 +256,10 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                     errors[CONF_RUN_AT] = error_key
                 elif error_key in ("pattern_too_broad", "pattern_invalid_syntax"):
                     errors[CONF_PATTERN] = error_key
-                elif error_key == "retention_days_negative":
+                elif error_key in (
+                    "retention_days_negative",
+                    "retention_days_too_large",
+                ):
                     errors[CONF_RETENTION_DAYS] = error_key
                 else:
                     _LOGGER.error(

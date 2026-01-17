@@ -19,6 +19,8 @@
       "run_at_invalid": "Daily run time must be in HH:MM format.",
       "pattern_too_broad": "This pattern matches ALL files! Please be more specific to avoid accidental data loss.",
       "pattern_invalid_syntax": "Invalid glob pattern syntax. Check for unclosed brackets or invalid wildcards.",
+      "retention_days_negative": "Retention days cannot be negative.",
+      "retention_days_too_large": "Retention days cannot exceed 3650 (10 years). Please enter a reasonable value.",
       "unknown": "Invalid configuration."
     }
   }

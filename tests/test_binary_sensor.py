@@ -146,3 +146,37 @@ async def test_binary_sensor_entity_category(hass: HomeAssistant, init_integrati
     assert entry is not None
     # Binary sensors typically don't have entity category unless diagnostic
     # Path accessibility is operational, not diagnostic
+
+
+async def test_binary_sensor_restoration_exception_handling(
+    hass: HomeAssistant, init_integration
+):
+    """Test binary sensor handles restoration exceptions gracefully (lines 53-55)."""
+    from unittest.mock import patch
+
+    from custom_components.retention_cleaner.binary_sensor import (
+        RetentionCleanerPathAvailable,
+    )
+
+    coordinator = init_integration.runtime_data
+
+    entity = RetentionCleanerPathAvailable(coordinator, init_integration)
+    entity.hass = hass
+    entity.entity_id = "binary_sensor.test_exception"
+
+    with patch.object(
+        entity,
+        "async_get_last_state",
+        side_effect=RuntimeError("Simulated restoration error"),
+    ):
+        await entity.async_added_to_hass()
+
+    # Exception should be caught and _restored_last_state set to None
+    assert entity._restored_last_state is None
+
+    # Entity should still function normally
+    coordinator.data = {"path_available": True}
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    assert entity.is_on is True
