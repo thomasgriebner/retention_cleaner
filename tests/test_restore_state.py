@@ -5,14 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_mock_restore_state_shutdown_restart,
 )
-
-from homeassistant.core import HomeAssistant
-
-import custom_components.retention_cleaner
 
 
 async def test_sensor_restore_numeric_value(hass: HomeAssistant):
