@@ -173,7 +173,7 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
         _LOGGER.warning("Path not accessible or not a directory: %s", base_path)
         return ScanResult(total_files=0, older_than_retention=0, path_available=False)
 
-    cutoff_ts = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
+    cutoff_ts = datetime.now(UTC).timestamp() - (retention_days * 24 * 60 * 60)
 
     total = 0
     older = 0
@@ -274,7 +274,7 @@ def _cleanup_folder(
             deleted_bytes=0,
         )
 
-    cutoff_ts = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
+    cutoff_ts = datetime.now(UTC).timestamp() - (retention_days * 24 * 60 * 60)
 
     deleted = 0
     deleted_bytes = 0
@@ -607,13 +607,25 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except RuntimeError as e:
             # Specific runtime errors (disk full, read-only) should not be retried
             _LOGGER.error(
-                "Critical error during cleanup of %s: %s", self.base_path, str(e)
+                "Critical error during cleanup: %s (path=%s, pattern=%s, retention_days=%d, dry_run=%s)",
+                str(e),
+                self.base_path,
+                self.pattern,
+                self.retention_days,
+                self.dry_run,
             )
-            raise UpdateFailed(str(e)) from e
+            raise UpdateFailed(f"Cleanup failed for {self.base_path}: {e}") from e
         except Exception as e:
             # keep last_cleanup timestamp, but expose error via coordinator failure
-            _LOGGER.error("Cleanup failed for %s: %s", self.base_path, str(e))
-            raise UpdateFailed(str(e)) from e
+            _LOGGER.error(
+                "Cleanup failed: %s (path=%s, pattern=%s, retention_days=%d, dry_run=%s)",
+                str(e),
+                self.base_path,
+                self.pattern,
+                self.retention_days,
+                self.dry_run,
+            )
+            raise UpdateFailed(f"Cleanup failed for {self.base_path}: {e}") from e
 
         # Calculate and store cleanup duration
         self.last_cleanup_duration_ms = int((time.perf_counter() - start_time) * 1000)
