@@ -13,7 +13,9 @@ import voluptuous as vol
 from custom_components.retention_cleaner.const import (
     CONF_BASE_PATH,
     CONF_DRY_RUN,
+    CONF_EXCEPT_EXTENSIONS,
     CONF_MAX_DELETES,
+    CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
@@ -51,6 +53,8 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
     assert result2["data"] == {
         CONF_BASE_PATH: "/media/test",
         CONF_PATTERN: "*.jpg",
+        CONF_ONLY_EXTENSIONS: "",
+        CONF_EXCEPT_EXTENSIONS: "",
         CONF_RETENTION_DAYS: 7,
         CONF_DRY_RUN: True,
         CONF_MAX_DELETES: 100,
@@ -271,6 +275,8 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
     assert result2["data"] == {
         CONF_BASE_PATH: "/media/test",
         CONF_PATTERN: "*.log",
+        CONF_ONLY_EXTENSIONS: "",
+        CONF_EXCEPT_EXTENSIONS: "",
         CONF_RETENTION_DAYS: 14,
         CONF_DRY_RUN: False,
         CONF_MAX_DELETES: 200,
@@ -652,7 +658,7 @@ async def test_options_flow_error_handling(
     # Test unexpected validation error in options flow
     from custom_components.retention_cleaner import config_flow
 
-    def mock_validate_unexpected(value):
+    def mock_validate_unexpected(value, allow_empty=False):
         raise vol.Invalid("weird_unexpected_error")
 
     with patch.object(config_flow, "_validate_pattern", mock_validate_unexpected):
@@ -838,3 +844,31 @@ async def test_symlink_validation_path_resolves_outside_media() -> None:
         pytest.raises(vol.Invalid, match="base_path_not_media"),
     ):
         _validate_base_path(test_path)
+
+
+async def test_extension_validation_valid_formats(hass: HomeAssistant) -> None:
+    """Test extension validation accepts valid formats."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "",
+                CONF_ONLY_EXTENSIONS: ".mp4,.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+            },
+        )
+
+    assert result2["type"] == FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_ONLY_EXTENSIONS] == ".mp4,.jpg"
+    assert result2["data"][CONF_PATTERN] == ""

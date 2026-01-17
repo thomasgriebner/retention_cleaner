@@ -12,7 +12,9 @@ _LOGGER = logging.getLogger(__name__)
 from .const import (
     CONF_BASE_PATH,
     CONF_DRY_RUN,
+    CONF_EXCEPT_EXTENSIONS,
     CONF_MAX_DELETES,
+    CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
@@ -25,6 +27,52 @@ from .const import (
 )
 
 TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+
+
+def _map_validation_error_to_fields(error_key: str) -> dict[str, str]:
+    """Map validation error codes to form field names.
+
+    Args:
+        error_key: Validation error code (e.g., "base_path_not_media")
+
+    Returns:
+        dict: Mapping of field names to error codes
+
+    Example:
+        >>> _map_validation_error_to_fields("extension_must_start_with_dot")
+        {'only_extensions': 'extension_must_start_with_dot',
+         'except_extensions': 'extension_must_start_with_dot'}
+    """
+    errors = {}
+
+    if error_key == "base_path_not_media":
+        errors[CONF_BASE_PATH] = error_key
+    elif error_key == "run_at_invalid":
+        errors[CONF_RUN_AT] = error_key
+    elif error_key in ("pattern_too_broad", "pattern_invalid_syntax"):
+        errors[CONF_PATTERN] = error_key
+    elif error_key in ("retention_days_negative", "retention_days_too_large"):
+        errors[CONF_RETENTION_DAYS] = error_key
+    elif error_key in (
+        "extension_must_start_with_dot",
+        "extension_no_wildcards",
+        "extension_no_paths",
+        "extension_too_short",
+    ):
+        # Extension validation errors - apply to both fields
+        errors[CONF_ONLY_EXTENSIONS] = error_key
+        errors[CONF_EXCEPT_EXTENSIONS] = error_key
+    elif error_key in (
+        "must_set_pattern_or_extensions",
+        "cannot_combine_pattern_and_extensions",
+        "cannot_use_both_only_and_except",
+    ):
+        # Mutual exclusion errors - apply to base
+        errors["base"] = error_key
+    else:
+        errors["base"] = "unknown"
+
+    return errors
 
 
 def _validate_base_path(value: str) -> str:
@@ -86,9 +134,28 @@ def _validate_run_at(value: str) -> str:
     return value
 
 
-def _validate_pattern(value: str) -> str:
-    """Validate glob pattern and warn about dangerous patterns."""
-    value = (value or "*").strip()
+def _validate_pattern(value: str, allow_empty: bool = False) -> str:
+    """Validate glob pattern and warn about dangerous patterns.
+
+    Args:
+        value: Pattern string to validate.
+        allow_empty: If True, empty patterns are allowed (for extension filtering mode).
+
+    Returns:
+        str: Validated pattern.
+
+    Raises:
+        vol.Invalid: If pattern is invalid or dangerous.
+    """
+    value = (value or "").strip()
+
+    # Empty pattern handling
+    if not value:
+        if allow_empty:
+            return value
+        # Empty pattern not allowed in standalone mode
+        _LOGGER.warning("Empty pattern provided")
+        raise vol.Invalid("pattern_invalid_syntax")
 
     # Check for EXTREMELY dangerous patterns that match ALL files
     EXTREMELY_DANGEROUS = ["*", "**/*"]
@@ -113,6 +180,121 @@ def _validate_pattern(value: str) -> str:
     return value
 
 
+def _validate_extensions(value: str) -> str:
+    """Validate extension list format.
+
+    Args:
+        value: Comma-separated list of extensions (e.g., ".mp4,.jpg")
+
+    Returns:
+        str: Validated and normalized extension list.
+
+    Raises:
+        vol.Invalid: If extension format is invalid.
+    """
+    value = (value or "").strip()
+
+    # Empty is valid (optional field)
+    if not value:
+        return value
+
+    # Parse extensions
+    extensions = [ext.strip() for ext in value.split(",")]
+    extensions = [ext for ext in extensions if ext]  # Remove empty strings
+
+    if not extensions:
+        return ""
+
+    # Validate each extension
+    for ext in extensions:
+        # Must start with a dot
+        if not ext.startswith("."):
+            _LOGGER.warning(
+                "Invalid extension '%s': must start with a dot (e.g., '.mp4')", ext
+            )
+            raise vol.Invalid("extension_must_start_with_dot")
+
+        # Must not contain wildcards
+        if "*" in ext or "?" in ext:
+            _LOGGER.warning("Invalid extension '%s': wildcards not allowed", ext)
+            raise vol.Invalid("extension_no_wildcards")
+
+        # Must not contain path separators
+        if "/" in ext or "\\" in ext:
+            _LOGGER.warning("Invalid extension '%s': path separators not allowed", ext)
+            raise vol.Invalid("extension_no_paths")
+
+        # Must have at least one character after the dot
+        if len(ext) < 2:
+            _LOGGER.warning("Invalid extension '%s': too short", ext)
+            raise vol.Invalid("extension_too_short")
+
+    return value
+
+
+def _validate_pattern_and_extensions(user_input: dict) -> dict:
+    """Validate mutual exclusion between pattern and extension filters.
+
+    Args:
+        user_input: User configuration dictionary.
+
+    Returns:
+        dict: Validated configuration with normalized values.
+
+    Raises:
+        vol.Invalid: If validation rules are violated.
+    """
+    pattern = user_input.get(CONF_PATTERN, "").strip()
+    only_ext = user_input.get(CONF_ONLY_EXTENSIONS, "").strip()
+    except_ext = user_input.get(CONF_EXCEPT_EXTENSIONS, "").strip()
+
+    has_pattern = bool(pattern)
+    has_extensions = bool(only_ext or except_ext)
+
+    # Rule 1: At least one must be set
+    if not has_pattern and not has_extensions:
+        _LOGGER.warning("No pattern or extensions configured")
+        raise vol.Invalid("must_set_pattern_or_extensions")
+
+    # Rule 2: Cannot use both pattern and extensions
+    if has_pattern and has_extensions:
+        _LOGGER.warning(
+            "Cannot combine pattern '%s' with extensions (only=%s, except=%s)",
+            pattern,
+            only_ext,
+            except_ext,
+        )
+        raise vol.Invalid("cannot_combine_pattern_and_extensions")
+
+    # Rule 3: Cannot use both only_extensions and except_extensions
+    if only_ext and except_ext:
+        _LOGGER.warning(
+            "Cannot use both only_extensions and except_extensions: only=%s, except=%s",
+            only_ext,
+            except_ext,
+        )
+        raise vol.Invalid("cannot_use_both_only_and_except")
+
+    # Validate pattern if set (allow empty when using extensions)
+    if has_pattern:
+        pattern = _validate_pattern(pattern, allow_empty=False)
+    elif has_extensions:
+        # Empty pattern is OK when using extension filters
+        pattern = ""
+
+    # Validate extensions if set
+    if only_ext:
+        only_ext = _validate_extensions(only_ext)
+    if except_ext:
+        except_ext = _validate_extensions(except_ext)
+
+    return {
+        CONF_PATTERN: pattern,
+        CONF_ONLY_EXTENSIONS: only_ext,
+        CONF_EXCEPT_EXTENSIONS: except_ext,
+    }
+
+
 class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Retention Cleaner."""
 
@@ -124,10 +306,10 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 base_path = _validate_base_path(user_input[CONF_BASE_PATH])
-                pattern = _validate_pattern(
-                    user_input.get(CONF_PATTERN, DEFAULT_PATTERN)
-                )
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
+
+                # Validate pattern and extensions (mutual exclusion)
+                validated = _validate_pattern_and_extensions(user_input)
 
                 retention_days = int(
                     user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
@@ -139,7 +321,9 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 data = {
                     CONF_BASE_PATH: base_path,
-                    CONF_PATTERN: pattern,
+                    CONF_PATTERN: validated[CONF_PATTERN],
+                    CONF_ONLY_EXTENSIONS: validated[CONF_ONLY_EXTENSIONS],
+                    CONF_EXCEPT_EXTENSIONS: validated[CONF_EXCEPT_EXTENSIONS],
                     CONF_RETENTION_DAYS: retention_days,
                     CONF_RUN_AT: run_at,
                     CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
@@ -150,9 +334,11 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 title = base_path.split("/")[-1] or base_path
                 _LOGGER.info(
-                    "Creating config entry for path: %s (pattern: %s, retention: %d days)",
+                    "Creating config entry for path: %s (pattern: %s, only_ext: %s, except_ext: %s, retention: %d days)",
                     base_path,
                     data[CONF_PATTERN],
+                    data[CONF_ONLY_EXTENSIONS],
+                    data[CONF_EXCEPT_EXTENSIONS],
                     data[CONF_RETENTION_DAYS],
                 )
                 return self.async_create_entry(title=title, data=data)
@@ -160,25 +346,31 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except vol.Invalid as e:
                 # Map validation codes to correct field errors
                 error_key = str(e)
-                if error_key == "base_path_not_media":
-                    errors[CONF_BASE_PATH] = error_key
-                elif error_key == "run_at_invalid":
-                    errors[CONF_RUN_AT] = error_key
-                elif error_key in ("pattern_too_broad", "pattern_invalid_syntax"):
-                    errors[CONF_PATTERN] = error_key
-                elif error_key in (
+                errors.update(_map_validation_error_to_fields(error_key))
+                # Only log if it's an unknown error
+                if error_key not in (
+                    "base_path_not_media",
+                    "run_at_invalid",
+                    "pattern_too_broad",
+                    "pattern_invalid_syntax",
                     "retention_days_negative",
                     "retention_days_too_large",
+                    "extension_must_start_with_dot",
+                    "extension_no_wildcards",
+                    "extension_no_paths",
+                    "extension_too_short",
+                    "must_set_pattern_or_extensions",
+                    "cannot_combine_pattern_and_extensions",
+                    "cannot_use_both_only_and_except",
                 ):
-                    errors[CONF_RETENTION_DAYS] = error_key
-                else:
-                    _LOGGER.error("Unexpected validation error: %s", str(e))
-                    errors["base"] = "unknown"
+                    _LOGGER.error("Unexpected validation error: %s", error_key)
 
         schema = vol.Schema(
             {
                 vol.Required(CONF_BASE_PATH): str,
                 vol.Optional(CONF_PATTERN, default=DEFAULT_PATTERN): str,
+                vol.Optional(CONF_ONLY_EXTENSIONS, default=""): str,
+                vol.Optional(CONF_EXCEPT_EXTENSIONS, default=""): str,
                 vol.Optional(
                     CONF_RETENTION_DAYS, default=DEFAULT_RETENTION_DAYS
                 ): vol.Coerce(int),
@@ -213,10 +405,10 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             try:
                 base_path = _validate_base_path(user_input[CONF_BASE_PATH])
-                pattern = _validate_pattern(
-                    user_input.get(CONF_PATTERN, DEFAULT_PATTERN)
-                )
                 run_at = _validate_run_at(user_input.get(CONF_RUN_AT, DEFAULT_RUN_AT))
+
+                # Validate pattern and extensions (mutual exclusion)
+                validated = _validate_pattern_and_extensions(user_input)
 
                 retention_days = int(
                     user_input.get(CONF_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
@@ -227,16 +419,20 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                     raise vol.Invalid("retention_days_too_large")
 
                 _LOGGER.info(
-                    "Updating config for path: %s (pattern: %s, retention: %d days)",
+                    "Updating config for path: %s (pattern: %s, only_ext: %s, except_ext: %s, retention: %d days)",
                     base_path,
-                    pattern,
+                    validated[CONF_PATTERN],
+                    validated[CONF_ONLY_EXTENSIONS],
+                    validated[CONF_EXCEPT_EXTENSIONS],
                     retention_days,
                 )
                 return self.async_create_entry(
                     title="",
                     data={
                         CONF_BASE_PATH: base_path,
-                        CONF_PATTERN: pattern,
+                        CONF_PATTERN: validated[CONF_PATTERN],
+                        CONF_ONLY_EXTENSIONS: validated[CONF_ONLY_EXTENSIONS],
+                        CONF_EXCEPT_EXTENSIONS: validated[CONF_EXCEPT_EXTENSIONS],
                         CONF_RETENTION_DAYS: retention_days,
                         CONF_RUN_AT: run_at,
                         CONF_DRY_RUN: bool(
@@ -250,22 +446,26 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
 
             except vol.Invalid as e:
                 error_key = str(e)
-                if error_key == "base_path_not_media":
-                    errors[CONF_BASE_PATH] = error_key
-                elif error_key == "run_at_invalid":
-                    errors[CONF_RUN_AT] = error_key
-                elif error_key in ("pattern_too_broad", "pattern_invalid_syntax"):
-                    errors[CONF_PATTERN] = error_key
-                elif error_key in (
+                errors.update(_map_validation_error_to_fields(error_key))
+                # Only log if it's an unknown error
+                if error_key not in (
+                    "base_path_not_media",
+                    "run_at_invalid",
+                    "pattern_too_broad",
+                    "pattern_invalid_syntax",
                     "retention_days_negative",
                     "retention_days_too_large",
+                    "extension_must_start_with_dot",
+                    "extension_no_wildcards",
+                    "extension_no_paths",
+                    "extension_too_short",
+                    "must_set_pattern_or_extensions",
+                    "cannot_combine_pattern_and_extensions",
+                    "cannot_use_both_only_and_except",
                 ):
-                    errors[CONF_RETENTION_DAYS] = error_key
-                else:
                     _LOGGER.error(
-                        "Unexpected validation error in options flow: %s", str(e)
+                        "Unexpected validation error in options flow: %s", error_key
                     )
-                    errors["base"] = "unknown"
 
         schema = vol.Schema(
             {
@@ -274,6 +474,13 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                 ): str,
                 vol.Optional(
                     CONF_PATTERN, default=current.get(CONF_PATTERN, DEFAULT_PATTERN)
+                ): str,
+                vol.Optional(
+                    CONF_ONLY_EXTENSIONS, default=current.get(CONF_ONLY_EXTENSIONS, "")
+                ): str,
+                vol.Optional(
+                    CONF_EXCEPT_EXTENSIONS,
+                    default=current.get(CONF_EXCEPT_EXTENSIONS, ""),
                 ): str,
                 vol.Optional(
                     CONF_RETENTION_DAYS,

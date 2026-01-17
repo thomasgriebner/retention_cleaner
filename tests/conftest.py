@@ -19,6 +19,15 @@ import pytest
 pytest_plugins = "pytest_homeassistant_custom_component"
 
 
+# Test Constants
+TEST_MEDIA_PATH = "/media/test"
+TEST_RETENTION_DAYS = 7
+TEST_FILE_AGE_DAYS = 8  # Files older than retention
+TEST_MAX_DELETES = 100
+TEST_DRY_RUN = True
+TEST_RUN_AT = "02:00"
+
+
 def pytest_configure(config):
     """Configure pytest - ensures custom_components is in sys.path early."""
     repo_root = Path(__file__).parent.parent.absolute()
@@ -253,3 +262,111 @@ def freezer():
     """Freeze time for testing scheduled operations."""
     with freeze_time("2024-01-01 12:00:00") as frozen_time:
         yield frozen_time
+
+
+@pytest.fixture
+def create_test_files():
+    """Factory fixture to create test files with specified ages.
+
+    Usage:
+        files = create_test_files(tmp_path / "media", {
+            "test.mp4": 8,  # 8 days old
+            "test.jpg": 5,  # 5 days old
+        })
+
+    Returns:
+        Callable that creates files and returns the directory path.
+    """
+
+    def _create_files(base_dir: Path, files: dict[str, int]) -> Path:
+        """Create test files with specified ages.
+
+        Args:
+            base_dir: Directory to create files in
+            files: Dict mapping filename -> age_in_days
+
+        Returns:
+            Path: The base directory
+        """
+        import os
+        import time as time_module
+
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        for filename, age_days in files.items():
+            file_path = base_dir / filename
+            file_path.write_text(f"content of {filename}")
+
+            old_time = time_module.time() - (age_days * 24 * 60 * 60)
+            os.utime(file_path, (old_time, old_time))
+
+        return base_dir
+
+    return _create_files
+
+
+@pytest.fixture
+def mock_extension_config():
+    """Create a mock config entry for extension mode testing."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    return MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Extension Mode",
+        data={
+            "base_path": TEST_MEDIA_PATH,
+            "pattern": "",  # Empty in extension mode
+            "only_extensions": ".mp4,.jpg",
+            "except_extensions": "",
+            "retention_days": TEST_RETENTION_DAYS,
+            "dry_run": TEST_DRY_RUN,
+            "max_deletes": TEST_MAX_DELETES,
+            "run_at": TEST_RUN_AT,
+        },
+        entry_id="test_ext_entry_789",
+    )
+
+
+@pytest.fixture
+async def extension_config_flow(hass):
+    """Helper fixture for testing extension filtering config flows.
+
+    Simplifies the repetitive pattern of:
+    - async_init flow
+    - async_configure with user input
+    - optional mock of async_setup_entry
+
+    Usage:
+        result = await extension_config_flow({"only_extensions": ".mp4"})
+        result = await extension_config_flow({"only_extensions": ".mp4"}, expect_success=True)
+    """
+    from homeassistant import config_entries
+
+    async def _flow(user_input: dict, expect_success: bool = False):
+        """Run config flow with given user input.
+
+        Args:
+            user_input: Dict with config values (CONF_BASE_PATH, etc.)
+            expect_success: If True, mock async_setup_entry for success path
+
+        Returns:
+            FlowResult from async_configure
+        """
+        result = await hass.config_entries.flow.async_init(
+            "retention_cleaner", context={"source": config_entries.SOURCE_USER}
+        )
+
+        if expect_success:
+            with patch(
+                "custom_components.retention_cleaner.async_setup_entry",
+                return_value=True,
+            ):
+                return await hass.config_entries.flow.async_configure(
+                    result["flow_id"], user_input
+                )
+        else:
+            return await hass.config_entries.flow.async_configure(
+                result["flow_id"], user_input
+            )
+
+    return _flow

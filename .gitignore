@@ -208,3 +208,6 @@ marimo/_lsp/
 __marimo__/
 
 # Project-specific
+
+# Claude Code local settings
+.claude/settings.local.json
