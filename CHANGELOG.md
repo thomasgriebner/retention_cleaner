@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Case-insensitive extension matching
   - Mutual exclusion validation: Use either file pattern OR extension filters
   - User-friendly comma-separated syntax for extensions
+- Minimum file protection for retention safety
+  - `keep_minimum_files` option: Always preserve N newest files (0-10,000)
+  - Protects recent backups even with aggressive retention policies
+  - Works seamlessly with all other filters (retention days, size, extensions, pattern)
+  - Default: 0 (feature disabled)
 
 ### Changed
 - Test coverage maintained at 100% (170 tests across Python 3.11 and 3.12)
