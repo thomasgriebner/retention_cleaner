@@ -3,10 +3,12 @@
     "step": {
       "user": {
         "title": "Retention Cleaner",
-        "description": "Configure a folder cleanup rule.",
+        "description": "Configure a folder cleanup rule. Choose either a file pattern OR extension filters (not both).",
         "data": {
           "base_path": "Base path (must start with /media/)",
-          "pattern": "File pattern (glob)",
+          "pattern": "File pattern (glob) - leave empty if using extension filters",
+          "only_extensions": "Only delete these extensions (e.g., .mp4,.jpg) - optional",
+          "except_extensions": "Never delete these extensions (e.g., .mkv,.log) - optional",
           "retention_days": "Retention days",
           "run_at": "Daily run time (HH:MM)",
           "dry_run": "Dry run (do not delete)",
@@ -21,6 +23,13 @@
       "pattern_invalid_syntax": "Invalid glob pattern syntax. Check for unclosed brackets or invalid wildcards.",
       "retention_days_negative": "Retention days cannot be negative.",
       "retention_days_too_large": "Retention days cannot exceed 3650 (10 years). Please enter a reasonable value.",
+      "extension_must_start_with_dot": "Extensions must start with a dot (e.g., .mp4 not mp4).",
+      "extension_no_wildcards": "Extensions cannot contain wildcards (* or ?).",
+      "extension_no_paths": "Extensions cannot contain path separators (/ or \\).",
+      "extension_too_short": "Extension is too short. Must have at least one character after the dot.",
+      "must_set_pattern_or_extensions": "Must configure either pattern or extension filters.",
+      "cannot_combine_pattern_and_extensions": "Cannot use both file pattern and extension filters. Choose pattern OR extensions.",
+      "cannot_use_both_only_and_except": "Cannot use both 'only extensions' and 'except extensions' filters.",
       "unknown": "Invalid configuration."
     }
   }

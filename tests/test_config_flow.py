@@ -13,7 +13,10 @@ import voluptuous as vol
 from custom_components.retention_cleaner.const import (
     CONF_BASE_PATH,
     CONF_DRY_RUN,
+    CONF_EXCEPT_EXTENSIONS,
+    CONF_KEEP_MINIMUM_FILES,
     CONF_MAX_DELETES,
+    CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
@@ -51,9 +54,12 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
     assert result2["data"] == {
         CONF_BASE_PATH: "/media/test",
         CONF_PATTERN: "*.jpg",
+        CONF_ONLY_EXTENSIONS: "",
+        CONF_EXCEPT_EXTENSIONS: "",
         CONF_RETENTION_DAYS: 7,
         CONF_DRY_RUN: True,
         CONF_MAX_DELETES: 100,
+        CONF_KEEP_MINIMUM_FILES: 0,
         CONF_RUN_AT: "02:00",
     }
     assert len(mock_setup_entry.mock_calls) == 1
@@ -271,9 +277,12 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
     assert result2["data"] == {
         CONF_BASE_PATH: "/media/test",
         CONF_PATTERN: "*.log",
+        CONF_ONLY_EXTENSIONS: "",
+        CONF_EXCEPT_EXTENSIONS: "",
         CONF_RETENTION_DAYS: 14,
         CONF_DRY_RUN: False,
         CONF_MAX_DELETES: 200,
+        CONF_KEEP_MINIMUM_FILES: 0,
         CONF_RUN_AT: "03:00",
     }
 
@@ -652,7 +661,7 @@ async def test_options_flow_error_handling(
     # Test unexpected validation error in options flow
     from custom_components.retention_cleaner import config_flow
 
-    def mock_validate_unexpected(value):
+    def mock_validate_unexpected(value, allow_empty=False):
         raise vol.Invalid("weird_unexpected_error")
 
     with patch.object(config_flow, "_validate_pattern", mock_validate_unexpected):
@@ -838,3 +847,328 @@ async def test_symlink_validation_path_resolves_outside_media() -> None:
         pytest.raises(vol.Invalid, match="base_path_not_media"),
     ):
         _validate_base_path(test_path)
+
+
+async def test_extension_validation_valid_formats(hass: HomeAssistant) -> None:
+    """Test extension validation accepts valid formats."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "",
+                CONF_ONLY_EXTENSIONS: ".mp4,.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+            },
+        )
+
+    assert result2["type"] == FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_ONLY_EXTENSIONS] == ".mp4,.jpg"
+    assert result2["data"][CONF_PATTERN] == ""
+
+
+# Keep Minimum Files Validation Tests
+@pytest.mark.parametrize(
+    "value",
+    [0, 1, 5000, 10000],
+)
+async def test_keep_minimum_files_valid_values(hass: HomeAssistant, value: int) -> None:
+    """Test keep_minimum_files accepts valid values in range 0-10000."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+                CONF_KEEP_MINIMUM_FILES: value,
+            },
+        )
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), f"Should accept keep_minimum_files={value}"
+    assert (
+        result2["data"][CONF_KEEP_MINIMUM_FILES] == value
+    ), "Value should be stored correctly"
+
+
+async def test_keep_minimum_files_negative(hass: HomeAssistant) -> None:
+    """Test keep_minimum_files rejects negative values."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.jpg",
+            CONF_RETENTION_DAYS: 7,
+            CONF_DRY_RUN: True,
+            CONF_MAX_DELETES: 100,
+            CONF_RUN_AT: "02:00",
+            CONF_KEEP_MINIMUM_FILES: -1,
+        },
+    )
+
+    assert (
+        result2["type"] == FlowResultType.FORM
+    ), "Should show form on validation error"
+    assert result2["errors"] == {
+        CONF_KEEP_MINIMUM_FILES: "keep_minimum_negative"
+    }, "Should reject negative values"
+
+
+async def test_keep_minimum_files_too_large(hass: HomeAssistant) -> None:
+    """Test keep_minimum_files rejects values exceeding 10000."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.jpg",
+            CONF_RETENTION_DAYS: 7,
+            CONF_DRY_RUN: True,
+            CONF_MAX_DELETES: 100,
+            CONF_RUN_AT: "02:00",
+            CONF_KEEP_MINIMUM_FILES: 10001,
+        },
+    )
+
+    assert (
+        result2["type"] == FlowResultType.FORM
+    ), "Should show form on validation error"
+    assert result2["errors"] == {
+        CONF_KEEP_MINIMUM_FILES: "keep_minimum_too_large"
+    }, "Should reject values over 10000"
+
+
+async def test_keep_minimum_files_warning_when_exceeds_max_deletes(
+    hass: HomeAssistant, caplog
+) -> None:
+    """Test warning logged when keep_minimum_files exceeds max_deletes."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with (
+        patch(
+            "custom_components.retention_cleaner.async_setup_entry",
+            return_value=True,
+        ),
+        caplog.at_level("WARNING"),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 50,
+                CONF_RUN_AT: "02:00",
+                CONF_KEEP_MINIMUM_FILES: 100,
+            },
+        )
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should allow but warn when keep_minimum > max_deletes"
+    assert result2["data"][CONF_KEEP_MINIMUM_FILES] == 100, "Value should be stored"
+    assert (
+        "keep_minimum_files (100) exceeds max_deletes (50)" in caplog.text
+    ), "Should log warning"
+
+
+async def test_keep_minimum_files_default_value(hass: HomeAssistant) -> None:
+    """Test keep_minimum_files defaults to 0 when not specified."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+            },
+        )
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should create entry with defaults"
+    assert result2["data"][CONF_KEEP_MINIMUM_FILES] == 0, "Default should be 0"
+
+
+# Options Flow Tests for keep_minimum_files
+@pytest.mark.parametrize(
+    "value",
+    [0, 1, 5000, 10000],
+)
+async def test_options_keep_minimum_files_valid_values(
+    hass: HomeAssistant, mock_setup_entry, value: int
+) -> None:
+    """Test options flow accepts valid keep_minimum_files values."""
+    mock_setup_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.log",
+            CONF_RETENTION_DAYS: 14,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "03:00",
+            CONF_KEEP_MINIMUM_FILES: value,
+        },
+    )
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), f"Should accept keep_minimum_files={value}"
+    assert (
+        result2["data"][CONF_KEEP_MINIMUM_FILES] == value
+    ), "Value should be stored correctly"
+
+
+async def test_options_keep_minimum_files_negative(
+    hass: HomeAssistant, mock_setup_entry
+) -> None:
+    """Test options flow rejects negative keep_minimum_files."""
+    mock_setup_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.log",
+            CONF_RETENTION_DAYS: 14,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "03:00",
+            CONF_KEEP_MINIMUM_FILES: -5,
+        },
+    )
+
+    assert (
+        result2["type"] == FlowResultType.FORM
+    ), "Should show form on validation error"
+    assert result2["errors"] == {
+        CONF_KEEP_MINIMUM_FILES: "keep_minimum_negative"
+    }, "Should reject negative"
+
+
+async def test_options_keep_minimum_files_too_large(
+    hass: HomeAssistant, mock_setup_entry
+) -> None:
+    """Test options flow rejects keep_minimum_files exceeding 10000."""
+    mock_setup_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.log",
+            CONF_RETENTION_DAYS: 14,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "03:00",
+            CONF_KEEP_MINIMUM_FILES: 15000,
+        },
+    )
+
+    assert (
+        result2["type"] == FlowResultType.FORM
+    ), "Should show form on validation error"
+    assert result2["errors"] == {
+        CONF_KEEP_MINIMUM_FILES: "keep_minimum_too_large"
+    }, "Should reject over 10000"
+
+
+async def test_options_keep_minimum_files_warning(
+    hass: HomeAssistant, mock_setup_entry, caplog
+) -> None:
+    """Test options flow logs warning when keep_minimum_files exceeds max_deletes."""
+    mock_setup_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+
+    with caplog.at_level("WARNING"):
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.log",
+                CONF_RETENTION_DAYS: 14,
+                CONF_DRY_RUN: False,
+                CONF_MAX_DELETES: 50,
+                CONF_RUN_AT: "03:00",
+                CONF_KEEP_MINIMUM_FILES: 150,
+            },
+        )
+
+    assert result2["type"] == FlowResultType.CREATE_ENTRY, "Should allow but warn"
+    assert result2["data"][CONF_KEEP_MINIMUM_FILES] == 150, "Value should be stored"
+    assert (
+        "keep_minimum_files (150) exceeds max_deletes (50)" in caplog.text
+    ), "Should log warning"
+
+
+async def test_validate_keep_minimum_files_directly() -> None:
+    """Test _validate_keep_minimum_files function directly."""
+    from custom_components.retention_cleaner.config_flow import (
+        _validate_keep_minimum_files,
+    )
+
+    assert _validate_keep_minimum_files(0, 100) == 0, "Should accept 0"
+    assert _validate_keep_minimum_files(1, 100) == 1, "Should accept 1"
+    assert _validate_keep_minimum_files(5000, 5000) == 5000, "Should accept 5000"
+    assert _validate_keep_minimum_files(10000, 10000) == 10000, "Should accept maximum"
+
+    with pytest.raises(vol.Invalid, match="keep_minimum_negative"):
+        _validate_keep_minimum_files(-1, 100)
+
+    with pytest.raises(vol.Invalid, match="keep_minimum_too_large"):
+        _validate_keep_minimum_files(10001, 100)
+
+    with pytest.raises(vol.Invalid, match="keep_minimum_too_large"):
+        _validate_keep_minimum_files(50000, 100)

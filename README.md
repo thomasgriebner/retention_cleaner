@@ -60,6 +60,9 @@ Each cleanup rule creates a device with the following configuration options:
 | **Cleanup Time** | time | `03:15` | Daily automatic cleanup schedule (HH:MM) |
 | **Dry Run** | boolean | `false` | Test mode - count files without deleting |
 | **Max Deletes** | integer | `5000` | Safety limit per cleanup run |
+| **Only Extensions** | string | - | Keep only files with these extensions (e.g., `.mp4,.avi`) - case-insensitive |
+| **Except Extensions** | string | - | Delete all files except these extensions (e.g., `.log,.tmp`) - case-insensitive |
+| **Keep Minimum Files** | integer | `0` | Always preserve this many newest files (0-10,000), regardless of retention |
 
 ### Pattern Examples
 
@@ -69,6 +72,45 @@ Each cleanup rule creates a device with the following configuration options:
 | Specific camera | `front_door/**/*.mp4` | Videos from front_door folder |
 | Log files | `*.log` | Log files in root folder only |
 | Multiple formats | `**/*.{jpg,png,mp4}` | Multiple file types |
+
+### Extension Filtering
+
+Control which file types are cleaned up:
+
+| Use Case | Configuration | Description |
+|----------|---------------|-------------|
+| Only videos | `only_extensions: .mp4,.avi,.mkv` | Delete only video files |
+| Keep videos | `except_extensions: .mp4,.avi` | Delete everything except videos |
+| Default behavior | (leave empty) | Use File Pattern for matching |
+
+**Rules:**
+- Extensions are case-insensitive (`.MP4` matches `.mp4`)
+- Use comma-separated list without spaces
+- Cannot combine `only_extensions` and `except_extensions`
+- Cannot use extension filters with custom File Pattern
+- Extensions can start with or without a dot (`.mp4` or `mp4`)
+
+### Minimum File Protection
+
+Ensure you always keep recent files:
+
+```yaml
+Base Path: /media/backups
+Retention Days: 7
+Keep Minimum Files: 3
+```
+
+With this configuration:
+- Files older than 7 days are candidates for deletion
+- **But** the 3 newest files are always protected
+- Useful for ensuring you have recent backups even if retention is aggressive
+
+**Use Cases:**
+- Backup safety: Always keep last N backups even with short retention
+- Testing: Keep recent files while aggressively cleaning old ones
+- Rolling logs: Maintain minimum recent logs regardless of age
+
+**Valid Range:** 0-10,000 (0 = disabled)
 
 ### Safety Guidelines
 
@@ -157,6 +199,25 @@ Cleanup Time: 04:00
 Max Deletes: 100
 ```
 
+### Selective Video Cleanup with Protection
+
+Keep only video files, but always preserve the 5 newest:
+
+```yaml
+Base Path: /media/cameras/clips
+Only Extensions: .mp4,.avi
+Retention Days: 14
+Keep Minimum Files: 5
+Cleanup Time: 03:00
+Max Deletes: 500
+```
+
+This setup:
+- Only processes video files (.mp4, .avi)
+- Deletes videos older than 14 days
+- Always keeps the 5 newest videos (even if older than 14 days)
+- Ignores all non-video files
+
 ---
 
 ## Advanced Configuration
@@ -189,6 +250,9 @@ Create multiple cleanup rules for different folders by adding the integration mu
 | Files not deleting | Ensure dry-run is disabled |
 | Permission denied | Check Home Assistant user has write permissions |
 | Pattern validation error | Use more specific patterns (avoid `*` or `**/*`) |
+| Extension filter not working | Ensure no File Pattern is set (use default `**/*.jpg` or leave empty) |
+| Still has old files | Check if Keep Minimum Files is protecting them |
+| Cannot set both extension filters | Use only `only_extensions` OR `except_extensions`, not both |
 
 For more help, check the [issue tracker](https://github.com/thomasgriebner/retention_cleaner/issues).
 

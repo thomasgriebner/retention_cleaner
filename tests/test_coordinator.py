@@ -2043,3 +2043,702 @@ def test_cleanup_multiple_exception_types():
         assert result.total_after == 4
         assert result.older_remaining == 1
         assert result.path_available is True
+
+
+# Keep Minimum Files Tests
+async def test_keep_minimum_files_basic_protection(
+    hass: HomeAssistant, tmp_path, create_test_files
+):
+    """Test keep_minimum_files protects newest files regardless of age."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+    from tests.conftest import TEST_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    create_test_files(media_dir, {f"file_{i:02d}.jpg": 8 for i in range(10)})
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Keep Minimum",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: TEST_KEEP_MINIMUM_FILES,
+        },
+        entry_id="test_keep_min_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        assert (
+            len(remaining_files) == TEST_KEEP_MINIMUM_FILES
+        ), "Should protect 5 newest files"
+
+        deleted_count = 10 - TEST_KEEP_MINIMUM_FILES
+        assert (
+            coordinator.deleted_last_run == deleted_count
+        ), f"Should have deleted {deleted_count} files"
+
+        # All remaining files are old (8 days) but protected by keep_minimum
+        assert (
+            coordinator.data["older_than_retention"] == TEST_KEEP_MINIMUM_FILES
+        ), "All 5 protected files are older than retention (8 days > 7 days)"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_fewer_than_minimum(
+    hass: HomeAssistant, tmp_path, create_test_files
+):
+    """Test keep_minimum_files when fewer files exist than minimum threshold."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    create_test_files(media_dir, {f"file_{i}.jpg": 8 for i in range(3)})
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Fewer Files",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 10,
+        },
+        entry_id="test_fewer_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        assert (
+            len(remaining_files) == 3
+        ), "Should keep all 3 files when below minimum threshold"
+        assert coordinator.deleted_last_run == 0, "Should not delete any files"
+
+        # All 3 files are old (8 days) but protected because fewer than minimum
+        assert (
+            coordinator.data["older_than_retention"] == 3
+        ), "All 3 files are older than retention but protected"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_zero_behaves_normally(
+    hass: HomeAssistant, tmp_path, create_test_files
+):
+    """Test keep_minimum_files=0 behaves like feature is disabled."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    create_test_files(media_dir, {f"file_{i:02d}.jpg": 8 for i in range(10)})
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Zero Minimum",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 0,
+        },
+        entry_id="test_zero_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        assert len(remaining_files) == 0, "Should delete all old files when minimum=0"
+        assert coordinator.deleted_last_run == 10, "Should delete all 10 old files"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_sorting_by_mtime(hass: HomeAssistant, tmp_path):
+    """Test keep_minimum_files protects newest files by mtime not oldest."""
+    import os
+
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    now = time_module.time()
+    files_with_ages = [
+        ("oldest.jpg", now - (10 * 24 * 60 * 60)),
+        ("old.jpg", now - (9 * 24 * 60 * 60)),
+        ("middle.jpg", now - (8 * 24 * 60 * 60)),
+        ("newer.jpg", now - (7 * 24 * 60 * 60)),
+        ("newest.jpg", now - (6 * 24 * 60 * 60)),
+    ]
+
+    for filename, mtime in files_with_ages:
+        file_path = media_dir / filename
+        file_path.write_text(f"content of {filename}")
+        os.utime(file_path, (mtime, mtime))
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Sorting",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 5,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 2,
+        },
+        entry_id="test_sort_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        remaining_names = {f.name for f in remaining_files}
+
+        assert len(remaining_files) == 2, "Should keep exactly 2 newest files"
+        assert "newest.jpg" in remaining_names, "Should keep newest file"
+        assert "newer.jpg" in remaining_names, "Should keep second newest file"
+        assert "oldest.jpg" not in remaining_names, "Should delete oldest file"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_with_max_deletes(
+    hass: HomeAssistant, tmp_path, create_test_files
+):
+    """Test keep_minimum_files interacts correctly with max_deletes limit."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    create_test_files(media_dir, {f"file_{i:02d}.jpg": 8 for i in range(20)})
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test With Max Deletes",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 10,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 5,
+        },
+        entry_id="test_max_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        assert (
+            len(remaining_files) == 10
+        ), "Should have 10 files remaining (5 protected + 5 from max_deletes)"
+        assert (
+            coordinator.deleted_last_run == 10
+        ), "Should delete up to max_deletes limit"
+
+        # All 10 remaining files are old: 5 protected + 5 saved by max_deletes limit
+        assert (
+            coordinator.data["older_than_retention"] == 10
+        ), "All 10 remaining files are older than retention (5 protected + 5 from max_deletes)"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_with_only_extensions(hass: HomeAssistant, tmp_path):
+    """Test keep_minimum_files applies to filtered set only."""
+    import os
+
+    from custom_components.retention_cleaner.const import (
+        CONF_KEEP_MINIMUM_FILES,
+        CONF_ONLY_EXTENSIONS,
+    )
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    now = time_module.time()
+    old_time = now - (8 * 24 * 60 * 60)
+
+    for i in range(5):
+        mp4_file = media_dir / f"video_{i}.mp4"
+        mp4_file.write_text(f"video content {i}")
+        os.utime(mp4_file, (old_time, old_time))
+
+    for i in range(5):
+        txt_file = media_dir / f"log_{i}.txt"
+        txt_file.write_text(f"log content {i}")
+        os.utime(txt_file, (old_time, old_time))
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Extension Filter",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "",
+            CONF_ONLY_EXTENSIONS: ".mp4",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 2,
+        },
+        entry_id="test_ext_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        mp4_files = list(media_dir.glob("*.mp4"))
+        txt_files = list(media_dir.glob("*.txt"))
+
+        assert len(mp4_files) == 2, "Should keep 2 newest .mp4 files"
+        assert len(txt_files) == 5, "Should not touch .txt files (not in filter)"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_with_except_extensions(hass: HomeAssistant, tmp_path):
+    """Test keep_minimum_files with except_extensions filter."""
+    import os
+
+    from custom_components.retention_cleaner.const import (
+        CONF_EXCEPT_EXTENSIONS,
+        CONF_KEEP_MINIMUM_FILES,
+    )
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    now = time_module.time()
+    old_time = now - (8 * 24 * 60 * 60)
+
+    for i in range(5):
+        mp4_file = media_dir / f"video_{i}.mp4"
+        mp4_file.write_text(f"video content {i}")
+        os.utime(mp4_file, (old_time, old_time))
+
+    for i in range(5):
+        log_file = media_dir / f"log_{i}.log"
+        log_file.write_text(f"log content {i}")
+        os.utime(log_file, (old_time, old_time))
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Except Extension",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "",
+            CONF_EXCEPT_EXTENSIONS: ".log",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 2,
+        },
+        entry_id="test_except_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        mp4_files = list(media_dir.glob("*.mp4"))
+        log_files = list(media_dir.glob("*.log"))
+
+        assert len(mp4_files) == 2, "Should keep 2 newest .mp4 files (filtered set)"
+        assert len(log_files) == 5, "Should not touch .log files (excluded)"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_dry_run_logging(
+    hass: HomeAssistant, tmp_path, create_test_files, caplog
+):
+    """Test keep_minimum_files respects dry-run mode and logs correctly."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    create_test_files(media_dir, {f"file_{i:02d}.jpg": 8 for i in range(10)})
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Dry Run",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": True,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 3,
+        },
+        entry_id="test_dry_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        with caplog.at_level("DEBUG"):
+            await coordinator.async_run_cleanup_now()
+            await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        assert len(remaining_files) == 10, "Dry-run should not delete any files"
+        assert coordinator.deleted_last_run == 0, "Dry-run should report 0 deletions"
+        assert any(
+            "Protecting 3 newest files" in msg for msg in caplog.messages
+        ), "Should log protection count"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize(
+    "num_files,expected_description",
+    [
+        (0, "empty directory"),
+        (1, "single file"),
+        (2, "two files"),
+    ],
+)
+async def test_keep_minimum_files_small_file_counts(
+    hass: HomeAssistant,
+    tmp_path,
+    create_test_files,
+    num_files: int,
+    expected_description: str,
+):
+    """Test keep_minimum_files with small file counts (0, 1, 2 files)."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    if num_files > 0:
+        create_test_files(media_dir, {f"file_{i}.jpg": 8 for i in range(num_files)})
+    else:
+        media_dir.mkdir(parents=True)
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title=f"Test {expected_description}",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 5,
+        },
+        entry_id=f"test_small_{num_files}",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        assert (
+            len(remaining_files) == num_files
+        ), f"Should keep all {num_files} files ({expected_description})"
+        assert (
+            coordinator.deleted_last_run == 0
+        ), f"Should not delete any files when below minimum ({expected_description})"
+        assert (
+            coordinator.data["total_files"] == num_files
+        ), f"Should count {num_files} files"
+
+        # For files that exist, verify they're counted as older_than_retention
+        if num_files > 0:
+            assert (
+                coordinator.data["older_than_retention"] == num_files
+            ), f"All {num_files} files are older than retention but protected"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_all_within_retention(
+    hass: HomeAssistant, tmp_path, create_test_files
+):
+    """Test keep_minimum_files when all files are within retention period."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    create_test_files(media_dir, {f"file_{i}.jpg": 2 for i in range(10)})
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test All Within Retention",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 3,
+        },
+        entry_id="test_within_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        assert len(remaining_files) == 10, "Should keep all files within retention"
+        assert (
+            coordinator.deleted_last_run == 0
+        ), "Should not delete files within retention"
+        assert (
+            coordinator.data["older_than_retention"] == 0
+        ), "No files should be older than retention"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_mixed_ages(hass: HomeAssistant, tmp_path):
+    """Test keep_minimum_files with mix of old and new files."""
+    import os
+
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    now = time_module.time()
+
+    for i in range(5):
+        old_file = media_dir / f"old_{i}.jpg"
+        old_file.write_text(f"old content {i}")
+        old_time = now - (8 * 24 * 60 * 60)
+        os.utime(old_file, (old_time, old_time))
+
+    for i in range(5):
+        new_file = media_dir / f"new_{i}.jpg"
+        new_file.write_text(f"new content {i}")
+        new_time = now - (2 * 24 * 60 * 60)
+        os.utime(new_file, (new_time, new_time))
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Mixed Ages",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 7,
+        },
+        entry_id="test_mixed_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_run_cleanup_now()
+        await hass.async_block_till_done()
+
+        remaining_files = list(media_dir.glob("*.jpg"))
+        remaining_names = {f.name for f in remaining_files}
+
+        assert len(remaining_files) == 7, "Should keep 7 newest files total"
+        assert all(
+            f"new_{i}.jpg" in remaining_names for i in range(5)
+        ), "Should keep all 5 new files"
+        assert (
+            sum(1 for name in remaining_names if name.startswith("old_")) == 2
+        ), "Should keep 2 oldest files"
+
+        # Only the 2 protected old files are older than retention (5 new files are within retention)
+        assert (
+            coordinator.data["older_than_retention"] == 2
+        ), "Only 2 old protected files are older than retention (5 new files are within retention)"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_property_accessor(hass: HomeAssistant, tmp_path):
+    """Test coordinator.keep_minimum_files property returns correct value."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Property",
+        data={
+            "base_path": "/media/test",
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 42,
+        },
+        entry_id="test_prop_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        assert (
+            coordinator.keep_minimum_files == 42
+        ), "Property should return configured value"
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_keep_minimum_files_in_coordinator_data(
+    hass: HomeAssistant, tmp_path, create_test_files
+):
+    """Test keep_minimum_files value is included in coordinator data."""
+    from custom_components.retention_cleaner.const import CONF_KEEP_MINIMUM_FILES
+
+    media_dir = tmp_path / "media" / "test"
+    create_test_files(media_dir, {f"file_{i}.jpg": 8 for i in range(5)})
+
+    entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Data",
+        data={
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+            "dry_run": False,
+            "max_deletes": 100,
+            "run_at": "02:00",
+            CONF_KEEP_MINIMUM_FILES: 3,
+        },
+        entry_id="test_data_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        assert coordinator.data is not None, "Coordinator should have data"
+        assert (
+            "keep_minimum_files" in coordinator.data
+        ), "Data should include keep_minimum_files"
+        assert (
+            coordinator.data["keep_minimum_files"] == 3
+        ), "Value should match configuration"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+def test_cleanup_folder_keep_minimum_files_sync(tmp_path):
+    """Test _cleanup_folder function directly with keep_minimum_files."""
+    import os
+
+    from custom_components.retention_cleaner.coordinator import _cleanup_folder
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    now = time_module.time()
+    old_time = now - (8 * 24 * 60 * 60)
+
+    for i in range(10):
+        file_path = media_dir / f"file_{i:02d}.jpg"
+        file_path.write_text(f"content {i}")
+        os.utime(file_path, (old_time, old_time))
+
+    result = _cleanup_folder(
+        str(media_dir),
+        "*.jpg",
+        retention_days=7,
+        dry_run=False,
+        max_deletes=100,
+        keep_minimum_files=4,
+    )
+
+    remaining_files = list(media_dir.glob("*.jpg"))
+
+    assert result.deleted == 6, "Should delete 6 files (10 - 4 protected)"
+    assert len(remaining_files) == 4, "Should have 4 files remaining"
+    assert result.total_after == 4, "Result should report 4 files after cleanup"
+    assert result.older_remaining == 4, "All 4 remaining files are old but protected"
+
+
+def test_scan_folder_keep_minimum_not_applied(tmp_path):
+    """Test _scan_folder does not apply keep_minimum_files (scan only counts)."""
+    import os
+
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    now = time_module.time()
+    old_time = now - (8 * 24 * 60 * 60)
+
+    for i in range(10):
+        file_path = media_dir / f"file_{i}.jpg"
+        file_path.write_text(f"content {i}")
+        os.utime(file_path, (old_time, old_time))
+
+    result = _scan_folder(
+        str(media_dir),
+        "*.jpg",
+        retention_days=7,
+    )
+
+    assert result.total_files == 10, "Scan should count all files"
+    assert result.older_than_retention == 10, "Scan should count all old files"
+    assert result.path_available is True, "Path should be available"

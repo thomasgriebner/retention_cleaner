@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.0]
+
+### Added
+- Extension filtering for selective cleanup (closes #15)
+  - `only_extensions` option: Delete only specified file extensions (e.g., `.mp4,.jpg`)
+  - `except_extensions` option: Delete all files except specified extensions (e.g., `.mkv,.log`)
+  - Case-insensitive extension matching
+  - Mutual exclusion validation: Use either file pattern OR extension filters
+  - User-friendly comma-separated syntax for extensions
+- Minimum file protection for retention safety
+  - `keep_minimum_files` option: Always preserve N newest files (0-10,000)
+  - Protects recent backups even with aggressive retention policies
+  - Works seamlessly with all other filters (retention days, size, extensions, pattern)
+  - Default: 0 (feature disabled)
+
+### Changed
+- Test coverage maintained at 100% (170 tests across Python 3.11 and 3.12)
+- Improved code quality with refactored helpers and reduced duplication
+- Enhanced test suite with parametrized tests and helper fixtures (19.9% reduction in test code)
+- Performance optimization: Cached extension set parsing
+
+### Fixed
+- Runtime safety checks to prevent misconfiguration with empty filters
+
 ## [1.0.10]
 
 ### Added
@@ -95,6 +119,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Config flow for UI configuration
 - Glob pattern support
 
+[1.1.0]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.10...v1.1.0
 [1.0.10]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.7...v1.0.8

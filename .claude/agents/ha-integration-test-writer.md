@@ -22,7 +22,7 @@ description: |
   </example>
 
 model: inherit
-color: blue
+color: cyan
 tools: Read, Write, Edit, Bash, Grep, Glob, MultiEdit
 ---
 
@@ -165,6 +165,189 @@ except TypeError:
     registry = hass.helpers.device_registry.async_get(hass)
 ```
 
+## MANDATORY TEST STANDARDS
+
+**CRITICAL**: Before writing ANY test, verify it follows ALL these standards. This prevents code review rework.
+
+### 1. Fixture Usage ✅
+```python
+# BAD: Duplicated setup code
+async def test_something(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_BASE_PATH: "/media/test", ...}
+    )
+    await setup_integration(hass, entry)
+
+# GOOD: Use conftest.py fixtures
+async def test_something(hass, mock_entry, init_integration):
+    # Entry and setup handled by fixtures
+    coordinator = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+```
+
+**Rules:**
+- ALWAYS use existing fixtures from conftest.py
+- NEVER duplicate MockConfigEntry creation (use `mock_entry` fixture)
+- NEVER duplicate setup code (use `init_integration` fixture)
+- Create NEW fixtures in conftest.py if pattern repeats 3+ times
+
+### 2. Constants (NO Magic Numbers) ✅
+```python
+# BAD: Magic numbers scattered everywhere
+mock_config = {"base_path": "/media/test", "retention_days": 7}
+assert coordinator.data["total_files"] == 100
+
+# GOOD: Constants from conftest.py
+from tests.conftest import TEST_MEDIA_PATH, TEST_RETENTION_DAYS, TEST_MAX_DELETES
+
+mock_config = {CONF_BASE_PATH: TEST_MEDIA_PATH, CONF_RETENTION_DAYS: TEST_RETENTION_DAYS}
+assert coordinator.data["total_files"] == TEST_MAX_DELETES
+```
+
+**Rules:**
+- NEVER use literal strings like "/media/test" (use TEST_MEDIA_PATH)
+- NEVER use magic numbers like 7, 100 (define in conftest.py)
+- ALWAYS import constants from conftest.py or const.py
+- Use descriptive names: `TEST_FILE_AGE_DAYS = 8` not `DAYS = 8`
+
+### 3. Parametrize for Similar Tests ✅
+```python
+# BAD: Duplicate tests with slight variations
+async def test_invalid_extension_no_dot():
+    with pytest.raises(vol.Invalid):
+        _validate_extensions("mp4")
+
+async def test_invalid_extension_with_wildcard():
+    with pytest.raises(vol.Invalid):
+        _validate_extensions(".mp*")
+
+async def test_invalid_extension_with_path():
+    with pytest.raises(vol.Invalid):
+        _validate_extensions("../mp4")
+
+# GOOD: Parametrized test
+@pytest.mark.parametrize(
+    ("value", "expected_error"),
+    [
+        ("mp4", "must start with a dot"),
+        (".mp*", "wildcards not allowed"),
+        ("../mp4", "path separators not allowed"),
+    ],
+)
+async def test_invalid_extensions(value, expected_error):
+    with pytest.raises(vol.Invalid, match=expected_error):
+        _validate_extensions(value)
+```
+
+**Rules:**
+- Use parametrize when 3+ tests have similar structure
+- Provide descriptive parameter names (not just "input, expected")
+- Include docstring explaining what's being tested
+- Keep parametrize lists readable (one tuple per line)
+
+### 4. Assertion Messages ✅
+```python
+# BAD: Silent failures
+assert coordinator.data["total_files"] == 5
+assert entity.state == "unavailable"
+
+# GOOD: Descriptive messages
+assert coordinator.data["total_files"] == 5, "Should count 5 test files"
+assert entity.state == "unavailable", "Path should be unavailable when missing"
+```
+
+**Rules:**
+- EVERY assertion MUST have a message (except pytest.raises)
+- Message explains WHAT should happen (not just repeating code)
+- Use present tense: "Should count 5 files" not "Counted files"
+- Be specific: "Should filter out .mp4 file" not "Should work"
+
+### 5. Helper Fixtures ✅
+```python
+# BAD: Repeated test patterns
+async def test_coordinator_with_extensions(hass, mock_entry):
+    mock_entry.options = {CONF_ONLY_EXTENSIONS: ".mp4"}
+    coordinator = RetentionCleanerCoordinator(hass, mock_entry)
+    # test logic
+
+async def test_coordinator_with_different_extensions(hass, mock_entry):
+    mock_entry.options = {CONF_EXCEPT_EXTENSIONS: ".log"}
+    coordinator = RetentionCleanerCoordinator(hass, mock_entry)
+    # test logic
+
+# GOOD: Helper fixture in conftest.py
+@pytest.fixture
+def mock_extension_config(mock_entry):
+    """Helper to create mock config with extension filters."""
+    def _create(only_ext=None, except_ext=None):
+        if only_ext:
+            mock_entry.options = {CONF_ONLY_EXTENSIONS: only_ext}
+        if except_ext:
+            mock_entry.options = {CONF_EXCEPT_EXTENSIONS: except_ext}
+        return mock_entry
+    return _create
+
+# Usage:
+async def test_coordinator_with_extensions(hass, mock_extension_config):
+    entry = mock_extension_config(only_ext=".mp4")
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+```
+
+**Rules:**
+- Create helper fixtures when pattern repeats 3+ times
+- Place helpers in conftest.py for reusability
+- Use factory pattern (return function) for flexible parameters
+- Document what the helper does
+
+### 6. DRY Principle in Tests ✅
+```python
+# BAD: File creation duplicated 15 times
+async def test_only_extensions_filters():
+    test_dir = tmp_path / "media" / "test"
+    test_dir.mkdir(parents=True)
+    file1 = test_dir / "video.mp4"
+    file1.write_text("content")
+    file2 = test_dir / "log.txt"
+    file2.write_text("content")
+    # ... (repeated in 15 tests)
+
+# GOOD: Fixture for file creation
+@pytest.fixture
+def create_test_files(tmp_path):
+    """Create test files with specified extensions."""
+    def _create(*filenames):
+        test_dir = tmp_path / "media" / "test"
+        test_dir.mkdir(parents=True)
+        files = []
+        for name in filenames:
+            file_path = test_dir / name
+            file_path.write_text("test content")
+            files.append(file_path)
+        return test_dir, files
+    return _create
+
+# Usage:
+async def test_only_extensions_filters(create_test_files):
+    test_dir, files = create_test_files("video.mp4", "log.txt")
+```
+
+**Rules:**
+- NEVER copy-paste test setup more than twice
+- Extract common setup into fixtures (conftest.py)
+- Use helper functions for repeated assertions
+- Keep test bodies focused on what's unique to that test
+
+## MANDATORY PRE-WRITE CHECKLIST
+
+Before writing ANY test, verify:
+- [ ] Checked conftest.py for existing fixtures
+- [ ] Identified constants needed (added to conftest.py if missing)
+- [ ] Determined if parametrize applies (3+ similar tests)
+- [ ] Planned assertion messages for all checks
+- [ ] Confirmed no duplicate setup code
+
+**IF ANY ITEM FAILS: Fix the pattern in conftest.py FIRST, then write tests**
+
 ## QUALITY CHECKLIST
 
 ### Pre-Test (MANDATORY)
@@ -178,6 +361,7 @@ except TypeError:
 - [ ] No "lingering timer" errors
 - [ ] Resource cleanup implemented
 - [ ] Real integration code paths exercised
+- [ ] All test standards followed (fixtures, constants, parametrize, assertions, DRY)
 
 ## COMMON PITFALLS
 

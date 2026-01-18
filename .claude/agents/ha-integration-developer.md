@@ -22,7 +22,7 @@ description: |
   </example>
 
 model: inherit
-color: green
+color: blue
 tools: Read, Write, Edit, Bash, Grep, Glob, MultiEdit, Task
 ---
 
@@ -363,6 +363,54 @@ async def async_shutdown(self) -> None:
 - Run tests yourself immediately after changes
 - Don't wait for CI/CD - catch issues early
 - Test both Python versions locally
+
+## MANDATORY SELF-REVIEW CHECKLIST
+
+**CRITICAL**: Before marking ANY task as complete, perform this self-review:
+
+### 1. DRY Principle ✅
+- [ ] No code duplicated more than 2 times
+- [ ] Repeated logic extracted into helper functions
+- [ ] Magic numbers replaced with named constants (use const.py)
+- [ ] Similar patterns consolidated
+
+### 2. Type Safety ✅
+- [ ] All functions have complete type hints
+- [ ] Return types explicitly specified
+- [ ] No `Any` type unless absolutely necessary
+- [ ] Modern Python syntax (e.g., `set[str]` not `Set[str]`)
+
+### 3. Error Handling ✅
+- [ ] All filesystem operations wrapped in try/except
+- [ ] User-facing errors have clear, actionable messages
+- [ ] Edge cases explicitly handled (empty inputs, None values)
+- [ ] Transient errors have retry logic where appropriate
+
+### 4. Performance ✅
+- [ ] No redundant parsing/computation (cache results)
+- [ ] Properties cached if called multiple times per operation
+- [ ] No O(n²) loops unless necessary and documented
+- [ ] File operations minimized (single stat() call per file)
+
+### 5. Safety (File Deletion Integration) ✅
+- [ ] Path validation present for all file operations
+- [ ] Dry-run mode respected
+- [ ] Max deletes limit enforced
+- [ ] Defensive checks for edge cases
+
+### 6. Code Quality ✅
+- [ ] Docstrings present for all public functions
+- [ ] Clear variable names (no abbreviations)
+- [ ] Functions under 50 lines (extract helpers if longer)
+- [ ] No commented-out code
+
+### 7. Testing ✅
+- [ ] Tests run on BOTH Python 3.11 AND 3.12
+- [ ] 100% coverage maintained
+- [ ] No new failing tests
+- [ ] Test yourself before spawning test agent
+
+**IF ANY ITEM FAILS: Fix immediately before completing task**
 
 ## REMEMBER
 

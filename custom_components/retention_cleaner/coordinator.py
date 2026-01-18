@@ -15,13 +15,18 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    ALL_FILES_PATTERN,
     CONF_BASE_PATH,
     CONF_DRY_RUN,
+    CONF_EXCEPT_EXTENSIONS,
+    CONF_KEEP_MINIMUM_FILES,
     CONF_MAX_DELETES,
+    CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
     COORDINATOR_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_KEEP_MINIMUM_FILES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -136,7 +141,67 @@ def _parse_run_at(value: str) -> dt_time:
     return dt_time(hour=int(hh), minute=int(mm), second=0)
 
 
-def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResult:
+def _parse_extensions(value: str) -> set[str]:
+    """Parse comma-separated extension list into a set.
+
+    Args:
+        value: Comma-separated extension list (e.g., ".mp4,.jpg,.MP4")
+
+    Returns:
+        set[str]: Set of lowercase extensions for efficient lookup.
+
+    Example:
+        >>> _parse_extensions(".mp4,.jpg,.MP4")
+        {'.mp4', '.jpg'}
+    """
+    if not value:
+        return set()
+
+    # Parse, strip, filter empty, and convert to lowercase
+    extensions = [ext.strip().lower() for ext in value.split(",")]
+    return {ext for ext in extensions if ext}
+
+
+def _should_filter_by_extension(
+    file_suffix: str,
+    only_ext_set: set[str],
+    except_ext_set: set[str],
+) -> bool:
+    """Check if file should be filtered out based on extension filters.
+
+    Args:
+        file_suffix: File extension including dot (e.g., ".mp4")
+        only_ext_set: Set of extensions to exclusively process (lowercase)
+        except_ext_set: Set of extensions to exclude (lowercase)
+
+    Returns:
+        bool: True if file should be filtered out (skipped), False otherwise
+
+    Example:
+        >>> _should_filter_by_extension(".mp4", {".mp4", ".jpg"}, set())
+        False  # File matches "only" list, process it
+        >>> _should_filter_by_extension(".mkv", {".mp4", ".jpg"}, set())
+        True  # File not in "only" list, skip it
+        >>> _should_filter_by_extension(".log", set(), {".log", ".tmp"})
+        True  # File in "except" list, skip it
+    """
+    file_ext = file_suffix.lower()
+
+    if only_ext_set:
+        return file_ext not in only_ext_set
+    elif except_ext_set:
+        return file_ext in except_ext_set
+
+    return False
+
+
+def _scan_folder(
+    base_path: str,
+    pattern: str,
+    retention_days: int,
+    only_ext_set: set[str] | None = None,
+    except_ext_set: set[str] | None = None,
+) -> ScanResult:
     """Scan folder and count files based on retention criteria.
 
     This function performs a non-destructive scan to analyze files
@@ -146,7 +211,10 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
     Args:
         base_path: Absolute path to the folder to scan.
         pattern: Glob pattern to match files (e.g., "*.jpg", "**/*.log").
+                 Empty when using extension filters.
         retention_days: Number of days to retain files.
+        only_ext_set: Set of extensions to exclusively delete (lowercase with dots).
+        except_ext_set: Set of extensions to never delete (lowercase with dots).
 
     Returns:
         ScanResult: Contains total files, files older than retention,
@@ -159,15 +227,37 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
         - Files that disappear during scan (race condition) are not counted.
         - Files without read permission are counted but age is unknown.
         - Other OS errors are logged but don't stop the scan.
+        - Extension matching is case-insensitive.
     """
     base = Path(base_path)
 
-    _LOGGER.debug(
-        "Starting scan of %s with pattern '%s' (retention: %d days)",
-        base_path,
-        pattern,
-        retention_days,
-    )
+    # Normalize None to empty set
+    only_ext_set = only_ext_set or set()
+    except_ext_set = except_ext_set or set()
+
+    # Determine search pattern
+    if only_ext_set or except_ext_set:
+        search_pattern = ALL_FILES_PATTERN
+        _LOGGER.debug(
+            "Starting scan of %s with extension filter (only=%d exts, except=%d exts, retention: %d days)",
+            base_path,
+            len(only_ext_set),
+            len(except_ext_set),
+            retention_days,
+        )
+    else:
+        # Safety check: ensure pattern is not empty
+        if not pattern:
+            raise ValueError(
+                "No filter configured: pattern is empty and no extension filters provided"
+            )
+        search_pattern = pattern
+        _LOGGER.debug(
+            "Starting scan of %s with pattern '%s' (retention: %d days)",
+            base_path,
+            pattern,
+            retention_days,
+        )
 
     if not base.exists() or not base.is_dir():
         _LOGGER.warning("Path not accessible or not a directory: %s", base_path)
@@ -179,8 +269,12 @@ def _scan_folder(base_path: str, pattern: str, retention_days: int) -> ScanResul
     older = 0
 
     try:
-        for p in base.glob(pattern):
+        for p in base.glob(search_pattern):
             if not p.is_file():
+                continue
+
+            # Extension filtering (case-insensitive)
+            if _should_filter_by_extension(p.suffix, only_ext_set, except_ext_set):
                 continue
 
             total += 1
@@ -225,6 +319,9 @@ def _cleanup_folder(
     retention_days: int,
     dry_run: bool,
     max_deletes: int,
+    only_ext_set: set[str] | None = None,
+    except_ext_set: set[str] | None = None,
+    keep_minimum_files: int = 0,
 ) -> CleanupResult:
     """Delete files older than retention period with safety limits.
 
@@ -234,9 +331,13 @@ def _cleanup_folder(
     Args:
         base_path: Absolute path to the folder to clean.
         pattern: Glob pattern to match files (e.g., "*.jpg").
+                 Empty when using extension filters.
         retention_days: Number of days to retain files.
         dry_run: If True, simulate deletion without actually deleting.
         max_deletes: Maximum number of files to delete in one run.
+        only_ext_set: Set of extensions to exclusively delete (lowercase with dots).
+        except_ext_set: Set of extensions to never delete (lowercase with dots).
+        keep_minimum_files: Minimum number of newest files to always preserve.
 
     Returns:
         CleanupResult: Contains number of deleted files, remaining files,
@@ -247,22 +348,50 @@ def _cleanup_folder(
                      or unexpected errors during cleanup.
 
     Safety:
+        - Always preserves the newest keep_minimum_files files regardless of age.
+        - Protected files are excluded from deletion candidates BEFORE max_deletes is applied.
         - Respects max_deletes limit to prevent accidental mass deletion.
         - Dry-run mode allows safe preview of what would be deleted.
         - Files already deleted (race condition) are counted as success.
         - Permission errors on individual files are logged but don't stop cleanup.
         - Critical errors (disk full, read-only FS) abort the operation.
+        - Extension matching is case-insensitive.
     """
     base = Path(base_path)
 
-    _LOGGER.debug(
-        "Starting cleanup of %s with pattern '%s' (retention: %d days, dry_run: %s, max_deletes: %d)",
-        base_path,
-        pattern,
-        retention_days,
-        dry_run,
-        max_deletes,
-    )
+    # Normalize None to empty set
+    only_ext_set = only_ext_set or set()
+    except_ext_set = except_ext_set or set()
+
+    # Determine search pattern
+    if only_ext_set or except_ext_set:
+        search_pattern = ALL_FILES_PATTERN
+        _LOGGER.debug(
+            "Starting cleanup of %s with extension filter (only=%d exts, except=%d exts, retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d)",
+            base_path,
+            len(only_ext_set),
+            len(except_ext_set),
+            retention_days,
+            dry_run,
+            max_deletes,
+            keep_minimum_files,
+        )
+    else:
+        # Safety check: ensure pattern is not empty
+        if not pattern:
+            raise ValueError(
+                "No filter configured: pattern is empty and no extension filters provided"
+            )
+        search_pattern = pattern
+        _LOGGER.debug(
+            "Starting cleanup of %s with pattern '%s' (retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d)",
+            base_path,
+            pattern,
+            retention_days,
+            dry_run,
+            max_deletes,
+            keep_minimum_files,
+        )
 
     if not base.exists() or not base.is_dir():
         _LOGGER.warning("Path not accessible or not a directory: %s", base_path)
@@ -282,15 +411,22 @@ def _cleanup_folder(
     older_remaining = 0
 
     try:
-        for p in base.glob(pattern):
+        # Step 1: Collect all matching files with metadata
+        files_with_metadata: list[tuple[Path, float, int]] = []
+        inaccessible_files = 0
+
+        for p in base.glob(search_pattern):
             if not p.is_file():
+                continue
+
+            # Extension filtering (case-insensitive)
+            if _should_filter_by_extension(p.suffix, only_ext_set, except_ext_set):
                 continue
 
             try:
                 # Get file stats (mtime and size) in one call for efficiency
                 file_stat = p.stat()
-                mtime = file_stat.st_mtime
-                file_size = file_stat.st_size
+                files_with_metadata.append((p, file_stat.st_mtime, file_stat.st_size))
             except FileNotFoundError:
                 # Race condition: file was deleted between glob and stat
                 _LOGGER.debug(
@@ -299,17 +435,40 @@ def _cleanup_folder(
                 continue  # Don't count files that no longer exist
             except PermissionError as err:
                 _LOGGER.warning("No permission to access file %s: %s", p.name, err)
-                total_after += 1
+                inaccessible_files += 1
                 continue
             except OSError as err:
                 _LOGGER.debug("Cannot stat file %s: %s", p.name, err)
-                total_after += 1
+                inaccessible_files += 1
                 continue
 
+        # Step 2: Sort by mtime descending (newest first)
+        files_with_metadata.sort(key=lambda x: x[1], reverse=True)
+
+        # Step 3: Determine protected files (keep_minimum_files newest)
+        protected_count = min(keep_minimum_files, len(files_with_metadata))
+        protected_files = {f[0] for f in files_with_metadata[:protected_count]}
+
+        if protected_count > 0:
+            _LOGGER.debug(
+                "Protecting %d newest files due to keep_minimum_files threshold",
+                protected_count,
+            )
+
+        # Step 4: Process files for deletion
+        for file_path, mtime, file_size in files_with_metadata:
+            # Check if file is protected by keep_minimum_files
+            if file_path in protected_files:
+                total_after += 1
+                if mtime < cutoff_ts:
+                    older_remaining += 1  # File is old but protected
+                continue
+
+            # Check if file is older than retention
             if mtime < cutoff_ts:
-                # file is older than retention
+                # File is older than retention
                 if dry_run:
-                    _LOGGER.debug("[DRY-RUN] Would delete: %s", p.name)
+                    _LOGGER.debug("[DRY-RUN] Would delete: %s", file_path.name)
                     total_after += 1
                     older_remaining += 1
                     continue
@@ -326,19 +485,22 @@ def _cleanup_folder(
                     continue
 
                 try:
-                    p.unlink()
+                    file_path.unlink()
                     deleted += 1
                     deleted_bytes += file_size
                     _LOGGER.debug(
-                        "Deleted file: %s (size: %d bytes)", p.name, file_size
+                        "Deleted file: %s (size: %d bytes)", file_path.name, file_size
                     )
-                    # deleted -> not remaining
                 except FileNotFoundError:
                     # Race condition: file was already deleted
-                    _LOGGER.debug("File already deleted (race condition): %s", p.name)
+                    _LOGGER.debug(
+                        "File already deleted (race condition): %s", file_path.name
+                    )
                     deleted += 1  # Count as successful since goal achieved
                 except PermissionError as err:
-                    _LOGGER.warning("No permission to delete file %s: %s", p.name, err)
+                    _LOGGER.warning(
+                        "No permission to delete file %s: %s", file_path.name, err
+                    )
                     total_after += 1
                     older_remaining += 1
                 except OSError as err:
@@ -351,15 +513,18 @@ def _cleanup_folder(
                     else:
                         _LOGGER.warning(
                             "Failed to delete file %s: [errno %d] %s",
-                            p.name,
+                            file_path.name,
                             err.errno or 0,
                             err,
                         )
                         total_after += 1
                         older_remaining += 1
             else:
-                # file is within retention
+                # File is within retention period
                 total_after += 1
+
+        # Add inaccessible files to total_after
+        total_after += inaccessible_files
 
     except PermissionError as e:
         _LOGGER.error("No permission to access directory %s: %s", base_path, str(e))
@@ -457,7 +622,43 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             str: Glob pattern for matching files (e.g., "*.jpg").
         """
-        return self.cfg[CONF_PATTERN]
+        return self.cfg.get(CONF_PATTERN, "")
+
+    @property
+    def only_extensions(self) -> str:
+        """Get the only_extensions filter.
+
+        Returns:
+            str: Comma-separated list of extensions to exclusively delete.
+        """
+        return self.cfg.get(CONF_ONLY_EXTENSIONS, "")
+
+    @property
+    def except_extensions(self) -> str:
+        """Get the except_extensions filter.
+
+        Returns:
+            str: Comma-separated list of extensions to never delete.
+        """
+        return self.cfg.get(CONF_EXCEPT_EXTENSIONS, "")
+
+    @property
+    def only_extensions_set(self) -> set[str]:
+        """Get parsed set of only_extensions for efficient lookup.
+
+        Returns:
+            set[str]: Lowercase extension set from only_extensions config
+        """
+        return _parse_extensions(self.only_extensions)
+
+    @property
+    def except_extensions_set(self) -> set[str]:
+        """Get parsed set of except_extensions for efficient lookup.
+
+        Returns:
+            set[str]: Lowercase extension set from except_extensions config
+        """
+        return _parse_extensions(self.except_extensions)
 
     @property
     def retention_days(self) -> int:
@@ -485,6 +686,15 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             int: Maximum deletion limit (default: 5000).
         """
         return int(self.cfg.get(CONF_MAX_DELETES, 5000))
+
+    @property
+    def keep_minimum_files(self) -> int:
+        """Get minimum number of files to always keep.
+
+        Returns:
+            int: Minimum file threshold (default: 0).
+        """
+        return int(self.cfg.get(CONF_KEEP_MINIMUM_FILES, DEFAULT_KEEP_MINIMUM_FILES))
 
     @property
     def run_at(self) -> dt_time:
@@ -601,6 +811,9 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.retention_days,
                 self.dry_run,
                 self.max_deletes,
+                self.only_extensions_set,
+                self.except_extensions_set,
+                self.keep_minimum_files,
                 max_retries=2,  # Fewer retries for cleanup (safety)
                 delay=1.0,  # Longer initial delay
             )
@@ -674,6 +887,8 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.base_path,
                 self.pattern,
                 self.retention_days,
+                self.only_extensions_set,
+                self.except_extensions_set,
                 max_retries=3,
                 delay=0.5,
             )
@@ -691,9 +906,12 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return {
             "base_path": self.base_path,
             "pattern": self.pattern,
+            "only_extensions": self.only_extensions,
+            "except_extensions": self.except_extensions,
             "retention_days": self.retention_days,
             "dry_run": self.dry_run,
             "max_deletes": self.max_deletes,
+            "keep_minimum_files": self.keep_minimum_files,
             "run_at": self.cfg.get(CONF_RUN_AT, "03:15"),
             "path_available": result.path_available,
             "total_files": result.total_files,
