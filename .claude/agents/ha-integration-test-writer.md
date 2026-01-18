@@ -22,7 +22,7 @@ description: |
   </example>
 
 model: inherit
-color: blue
+color: cyan
 tools: Read, Write, Edit, Bash, Grep, Glob, MultiEdit
 ---
 
