@@ -27,6 +27,14 @@ TEST_MAX_DELETES = 100
 TEST_DRY_RUN = True
 TEST_RUN_AT = "02:00"
 TEST_KEEP_MINIMUM_FILES = 5
+TEST_MAX_FILES_IN_FOLDER = 50
+
+# Test file count constants
+TEST_FILE_COUNT_SMALL = 5
+TEST_FILE_COUNT_MEDIUM = 20
+TEST_FILE_COUNT_LARGE = 50
+TEST_FILE_AGE_NEW = 2  # Days (within retention)
+TEST_FILE_AGE_OLD = TEST_FILE_AGE_DAYS  # Use the existing constant
 
 
 def pytest_configure(config):
@@ -307,6 +315,48 @@ def create_test_files():
 
 
 @pytest.fixture
+def create_numbered_files():
+    """Factory fixture to create numbered test files with specified ages.
+
+    Usage:
+        base_dir = create_numbered_files(tmp_path / "media", count=20, age_days=2, ext=".jpg")
+
+    Returns:
+        Callable that creates numbered files and returns the directory path.
+    """
+
+    def _create_files(
+        base_dir: Path, count: int, age_days: int, ext: str = ".jpg"
+    ) -> Path:
+        """Create numbered test files with specified age.
+
+        Args:
+            base_dir: Directory to create files in
+            count: Number of files to create
+            age_days: Age in days for all files
+            ext: File extension (default .jpg)
+
+        Returns:
+            Path: The base directory
+        """
+        import os
+        import time as time_module
+
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        for i in range(count):
+            file_path = base_dir / f"file_{i:02d}{ext}"
+            file_path.write_text(f"content {i}")
+
+            file_time = time_module.time() - (age_days * 24 * 60 * 60)
+            os.utime(file_path, (file_time, file_time))
+
+        return base_dir
+
+    return _create_files
+
+
+@pytest.fixture
 def mock_extension_config():
     """Create a mock config entry for extension mode testing."""
     from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -326,6 +376,42 @@ def mock_extension_config():
         },
         entry_id="test_ext_entry_789",
     )
+
+
+@pytest.fixture
+def mock_max_files_config():
+    """Factory fixture to create mock config entry with customizable max_files_in_folder.
+
+    Usage:
+        entry = mock_max_files_config(base_path=str(tmp_path), max_files=10, dry_run=False)
+    """
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    def _create_config(
+        base_path=TEST_MEDIA_PATH,
+        pattern="*.jpg",
+        retention_days=TEST_RETENTION_DAYS,
+        dry_run=False,
+        max_deletes=TEST_MAX_DELETES,
+        max_files=0,
+        keep_minimum=0,
+    ):
+        return MockConfigEntry(
+            domain="retention_cleaner",
+            title="Test Max Files",
+            data={
+                "base_path": base_path,
+                "pattern": pattern,
+                "retention_days": retention_days,
+                "dry_run": dry_run,
+                "max_deletes": max_deletes,
+                "max_files_in_folder": max_files,
+                "keep_minimum_files": keep_minimum,
+            },
+            entry_id="test_max_files_entry",
+        )
+
+    return _create_config
 
 
 @pytest.fixture

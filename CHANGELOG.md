@@ -18,11 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Protects recent backups even with aggressive retention policies
   - Works seamlessly with all other filters (retention days, size, extensions, pattern)
   - Default: 0 (feature disabled)
+- Maximum files limit per folder (closes #18)
+  - `max_files_in_folder` option: Cap total number of files in directory (0-1,000,000)
+  - Enforces file count limit after time-based cleanup
+  - Deletes oldest files (by modification time) to reach target
+  - Takes priority over `keep_minimum_files` setting
+  - Respects `max_deletes` safety limit and `dry_run` mode
+  - Default: 0 (feature disabled)
 
 ### Changed
-- Test coverage maintained at 100% (170 tests across Python 3.11 and 3.12)
 - Improved code quality with refactored helpers and reduced duplication
-- Enhanced test suite with parametrized tests and helper fixtures (19.9% reduction in test code)
 - Performance optimization: Cached extension set parsing
 
 ### Fixed

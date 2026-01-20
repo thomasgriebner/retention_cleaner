@@ -15,6 +15,7 @@ from .const import (
     CONF_EXCEPT_EXTENSIONS,
     CONF_KEEP_MINIMUM_FILES,
     CONF_MAX_DELETES,
+    CONF_MAX_FILES_IN_FOLDER,
     CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
@@ -22,6 +23,7 @@ from .const import (
     DEFAULT_DRY_RUN,
     DEFAULT_KEEP_MINIMUM_FILES,
     DEFAULT_MAX_DELETES,
+    DEFAULT_MAX_FILES_IN_FOLDER,
     DEFAULT_PATTERN,
     DEFAULT_RETENTION_DAYS,
     DEFAULT_RUN_AT,
@@ -57,6 +59,8 @@ def _map_validation_error_to_fields(error_key: str) -> dict[str, str]:
         errors[CONF_RETENTION_DAYS] = error_key
     elif error_key in ("keep_minimum_negative", "keep_minimum_too_large"):
         errors[CONF_KEEP_MINIMUM_FILES] = error_key
+    elif error_key in ("max_files_negative", "max_files_too_large"):
+        errors[CONF_MAX_FILES_IN_FOLDER] = error_key
     elif error_key in (
         "extension_must_start_with_dot",
         "extension_no_wildcards",
@@ -267,6 +271,37 @@ def _validate_keep_minimum_files(value: int, max_deletes: int) -> int:
     return value
 
 
+def _validate_max_files_in_folder(value: int, keep_minimum_files: int) -> int:
+    """Validate max_files_in_folder setting.
+
+    Args:
+        value: Maximum number of files to keep in folder (0 = disabled).
+        keep_minimum_files: Minimum number of files to keep.
+
+    Returns:
+        int: Validated max files value.
+
+    Raises:
+        vol.Invalid: If value is out of range (0-1,000,000).
+    """
+    if value < 0:
+        _LOGGER.warning("Invalid max_files_in_folder: %d (must be >= 0)", value)
+        raise vol.Invalid("max_files_negative")
+    if value > 1000000:
+        _LOGGER.warning("Invalid max_files_in_folder: %d (must be <= 1,000,000)", value)
+        raise vol.Invalid("max_files_too_large")
+
+    # Warning if max_files < keep_minimum (max_files takes priority but it's confusing)
+    if value > 0 and keep_minimum_files > 0 and value < keep_minimum_files:
+        _LOGGER.warning(
+            "max_files_in_folder (%d) is less than keep_minimum_files (%d) - max_files takes priority",
+            value,
+            keep_minimum_files,
+        )
+
+    return value
+
+
 def _validate_pattern_and_extensions(user_input: dict) -> dict:
     """Validate mutual exclusion between pattern and extension filters.
 
@@ -363,6 +398,14 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     max_deletes,
                 )
+                max_files_in_folder = _validate_max_files_in_folder(
+                    int(
+                        user_input.get(
+                            CONF_MAX_FILES_IN_FOLDER, DEFAULT_MAX_FILES_IN_FOLDER
+                        )
+                    ),
+                    keep_minimum_files,
+                )
 
                 data = {
                     CONF_BASE_PATH: base_path,
@@ -374,6 +417,7 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_DRY_RUN: bool(user_input.get(CONF_DRY_RUN, DEFAULT_DRY_RUN)),
                     CONF_MAX_DELETES: max_deletes,
                     CONF_KEEP_MINIMUM_FILES: keep_minimum_files,
+                    CONF_MAX_FILES_IN_FOLDER: max_files_in_folder,
                 }
 
                 title = base_path.split("/")[-1] or base_path
@@ -401,6 +445,8 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "retention_days_too_large",
                     "keep_minimum_negative",
                     "keep_minimum_too_large",
+                    "max_files_negative",
+                    "max_files_too_large",
                     "extension_must_start_with_dot",
                     "extension_no_wildcards",
                     "extension_no_paths",
@@ -427,6 +473,9 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     CONF_KEEP_MINIMUM_FILES, default=DEFAULT_KEEP_MINIMUM_FILES
+                ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_MAX_FILES_IN_FOLDER, default=DEFAULT_MAX_FILES_IN_FOLDER
                 ): vol.Coerce(int),
             }
         )
@@ -476,6 +525,14 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                     ),
                     max_deletes,
                 )
+                max_files_in_folder = _validate_max_files_in_folder(
+                    int(
+                        user_input.get(
+                            CONF_MAX_FILES_IN_FOLDER, DEFAULT_MAX_FILES_IN_FOLDER
+                        )
+                    ),
+                    keep_minimum_files,
+                )
 
                 _LOGGER.info(
                     "Updating config for path: %s (pattern: %s, only_ext: %s, except_ext: %s, retention: %d days)",
@@ -499,6 +556,7 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                         ),
                         CONF_MAX_DELETES: max_deletes,
                         CONF_KEEP_MINIMUM_FILES: keep_minimum_files,
+                        CONF_MAX_FILES_IN_FOLDER: max_files_in_folder,
                     },
                 )
 
@@ -515,6 +573,8 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                     "retention_days_too_large",
                     "keep_minimum_negative",
                     "keep_minimum_too_large",
+                    "max_files_negative",
+                    "max_files_too_large",
                     "extension_must_start_with_dot",
                     "extension_no_wildcards",
                     "extension_no_paths",
@@ -560,6 +620,12 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                     CONF_KEEP_MINIMUM_FILES,
                     default=current.get(
                         CONF_KEEP_MINIMUM_FILES, DEFAULT_KEEP_MINIMUM_FILES
+                    ),
+                ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_MAX_FILES_IN_FOLDER,
+                    default=current.get(
+                        CONF_MAX_FILES_IN_FOLDER, DEFAULT_MAX_FILES_IN_FOLDER
                     ),
                 ): vol.Coerce(int),
             }
