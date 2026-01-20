@@ -16,6 +16,7 @@ from custom_components.retention_cleaner.const import (
     CONF_EXCEPT_EXTENSIONS,
     CONF_KEEP_MINIMUM_FILES,
     CONF_MAX_DELETES,
+    CONF_MAX_FILES_IN_FOLDER,
     CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
@@ -60,6 +61,7 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
         CONF_DRY_RUN: True,
         CONF_MAX_DELETES: 100,
         CONF_KEEP_MINIMUM_FILES: 0,
+        CONF_MAX_FILES_IN_FOLDER: 0,
         CONF_RUN_AT: "02:00",
     }
     assert len(mock_setup_entry.mock_calls) == 1
@@ -283,6 +285,7 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
         CONF_DRY_RUN: False,
         CONF_MAX_DELETES: 200,
         CONF_KEEP_MINIMUM_FILES: 0,
+        CONF_MAX_FILES_IN_FOLDER: 0,
         CONF_RUN_AT: "03:00",
     }
 
@@ -1172,3 +1175,129 @@ async def test_validate_keep_minimum_files_directly() -> None:
 
     with pytest.raises(vol.Invalid, match="keep_minimum_too_large"):
         _validate_keep_minimum_files(50000, 100)
+
+
+@pytest.mark.parametrize(
+    ("max_files_value", "expected_valid"),
+    [
+        (0, True),  # Disabled is valid
+        (1, True),  # Minimum valid value
+        (100, True),  # Normal value
+        (1000000, True),  # Maximum valid value
+        (-1, False),  # Negative is invalid
+        (1000001, False),  # Over maximum is invalid
+    ],
+)
+async def test_form_max_files_validation(
+    hass: HomeAssistant, max_files_value, expected_valid
+) -> None:
+    """Test validation of max_files_in_folder parameter."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    user_input = {
+        CONF_BASE_PATH: "/media/test",
+        CONF_PATTERN: "*.jpg",
+        CONF_RETENTION_DAYS: 7,
+        CONF_DRY_RUN: True,
+        CONF_MAX_DELETES: 100,
+        CONF_RUN_AT: "02:00",
+        CONF_MAX_FILES_IN_FOLDER: max_files_value,
+    }
+
+    if expected_valid:
+        with patch(
+            "custom_components.retention_cleaner.async_setup_entry",
+            return_value=True,
+        ):
+            result2 = await hass.config_entries.flow.async_configure(
+                result["flow_id"], user_input
+            )
+            await hass.async_block_till_done()
+
+        assert (
+            result2["type"] == FlowResultType.CREATE_ENTRY
+        ), f"Should accept max_files_in_folder={max_files_value}"
+    else:
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input
+        )
+
+        assert (
+            result2["type"] == FlowResultType.FORM
+        ), f"Should reject max_files_in_folder={max_files_value}"
+        assert (
+            CONF_MAX_FILES_IN_FOLDER in result2["errors"]
+        ), "Should have validation error for max_files_in_folder"
+
+
+async def test_form_max_files_warning_when_less_than_keep_minimum(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test warning logged when max_files_in_folder < keep_minimum_files."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+                CONF_KEEP_MINIMUM_FILES: 20,
+                CONF_MAX_FILES_IN_FOLDER: 10,
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should accept valid configuration despite warning"
+    assert any(
+        "max_files_in_folder" in record.message
+        and "less than" in record.message
+        and "keep_minimum_files" in record.message
+        for record in caplog.records
+    ), "Should log warning about conflicting values"
+
+
+async def test_options_max_files_warning_when_less_than_keep_minimum(
+    hass: HomeAssistant, mock_setup_entry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test warning logged in options flow when max_files_in_folder < keep_minimum_files."""
+    mock_setup_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/media/test",
+            CONF_PATTERN: "*.jpg",
+            CONF_RETENTION_DAYS: 7,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 100,
+            CONF_RUN_AT: "02:00",
+            CONF_KEEP_MINIMUM_FILES: 30,
+            CONF_MAX_FILES_IN_FOLDER: 15,
+        },
+    )
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should accept valid configuration despite warning"
+    assert any(
+        "max_files_in_folder" in record.message
+        and "less than" in record.message
+        and "keep_minimum_files" in record.message
+        for record in caplog.records
+    ), "Should log warning about conflicting values"

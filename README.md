@@ -63,6 +63,7 @@ Each cleanup rule creates a device with the following configuration options:
 | **Only Extensions** | string | - | Keep only files with these extensions (e.g., `.mp4,.avi`) - case-insensitive |
 | **Except Extensions** | string | - | Delete all files except these extensions (e.g., `.log,.tmp`) - case-insensitive |
 | **Keep Minimum Files** | integer | `0` | Always preserve this many newest files (0-10,000), regardless of retention |
+| **Max Files In Folder** | integer | `0` | Cap total number of files in folder (0-1,000,000), enforced after time-based cleanup (0 = disabled) |
 
 ### Pattern Examples
 
@@ -111,6 +112,38 @@ With this configuration:
 - Rolling logs: Maintain minimum recent logs regardless of age
 
 **Valid Range:** 0-10,000 (0 = disabled)
+
+### Maximum Files Limit
+
+Cap the total number of files in a folder regardless of age:
+
+```yaml
+Base Path: /media/recordings
+Retention Days: 30
+Max Files In Folder: 100
+```
+
+With this configuration:
+- First, files older than 30 days are deleted (time-based cleanup)
+- Then, if more than 100 files remain, the oldest files are deleted until the count reaches 100
+- Oldest files (by modification time) are removed first
+
+**Order of Operations:**
+1. Time-based cleanup runs first (retention_days)
+2. File count enforcement runs second on remaining files
+
+**Interactions:**
+- Takes priority over `keep_minimum_files` (file count limit is enforced even if minimum would protect more files)
+- Respects `max_deletes` safety limit (stops deletion when max_deletes is reached)
+- Works with `dry_run` mode (shows what would be deleted)
+
+**Use Cases:**
+- Storage management: Keep folder size predictable (100 most recent files)
+- Disk quotas: Prevent folder from exceeding file count limits
+- Performance: Limit file count for faster directory scanning
+- Backup rotation: Keep only N most recent backups
+
+**Valid Range:** 0-1,000,000 (0 = disabled)
 
 ### Safety Guidelines
 
