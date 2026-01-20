@@ -25,6 +25,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Takes priority over `keep_minimum_files` setting
   - Respects `max_deletes` safety limit and `dry_run` mode
   - Default: 0 (feature disabled)
+- Empty directory removal after cleanup
+  - `remove_empty_folders` option: Remove empty subdirectories after file deletion
+  - Runs bottom-up after all file cleanup operations complete
+  - Preserves directories containing hidden files (e.g., `.gitkeep`, `.DS_Store`)
+  - Never removes the configured `base_path` directory
+  - Respects `dry_run` mode for safe testing
+  - Gracefully handles race conditions and permission errors
+  - Default: false (opt-in for safety)
 
 ### Changed
 - Improved code quality with refactored helpers and reduced duplication

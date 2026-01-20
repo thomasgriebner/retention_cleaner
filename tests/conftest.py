@@ -28,6 +28,7 @@ TEST_DRY_RUN = True
 TEST_RUN_AT = "02:00"
 TEST_KEEP_MINIMUM_FILES = 5
 TEST_MAX_FILES_IN_FOLDER = 50
+TEST_REMOVE_EMPTY_FOLDERS = False  # Default for opt-in feature
 
 # Test file count constants
 TEST_FILE_COUNT_SMALL = 5
@@ -35,6 +36,16 @@ TEST_FILE_COUNT_MEDIUM = 20
 TEST_FILE_COUNT_LARGE = 50
 TEST_FILE_AGE_NEW = 2  # Days (within retention)
 TEST_FILE_AGE_OLD = TEST_FILE_AGE_DAYS  # Use the existing constant
+
+# Hidden file names for empty directory tests
+TEST_HIDDEN_FILE_GITKEEP = ".gitkeep"
+TEST_HIDDEN_FILE_DS_STORE = ".DS_Store"
+TEST_HIDDEN_FILE_KEEP = ".keep"
+
+# Directory depth constants for nested tests
+TEST_DIR_DEPTH_SHALLOW = 1
+TEST_DIR_DEPTH_MEDIUM = 3
+TEST_DIR_DEPTH_DEEP = 5
 
 
 def pytest_configure(config):
@@ -457,3 +468,83 @@ async def extension_config_flow(hass):
             )
 
     return _flow
+
+
+@pytest.fixture
+def create_nested_dirs():
+    """Factory fixture to create nested directory structures for testing.
+
+    Usage:
+        base, dirs = create_nested_dirs(tmp_path / "media", depth=3, files_in_leaf=False)
+
+    Returns:
+        Callable that creates nested directories and returns (base_path, [all_dir_paths]).
+    """
+
+    def _create(
+        base_dir: Path, depth: int, files_in_leaf: bool = False
+    ) -> tuple[Path, list[Path]]:
+        """Create nested directory structure.
+
+        Args:
+            base_dir: Root directory to create structure in
+            depth: Number of nested levels (1 = base/level1, 2 = base/level1/level2, etc.)
+            files_in_leaf: If True, add a test file in the deepest directory
+
+        Returns:
+            Tuple of (base_dir, list of all created directory paths)
+        """
+        base_dir.mkdir(parents=True, exist_ok=True)
+        created_dirs = []
+
+        current = base_dir
+        for i in range(1, depth + 1):
+            current = current / f"level{i}"
+            current.mkdir(exist_ok=True)
+            created_dirs.append(current)
+
+        if files_in_leaf and created_dirs:
+            test_file = created_dirs[-1] / "test.jpg"
+            test_file.write_text("test content")
+
+        return base_dir, created_dirs
+
+    return _create
+
+
+@pytest.fixture
+def mock_remove_empty_config():
+    """Factory fixture to create mock config entry with remove_empty_folders option.
+
+    Usage:
+        entry = mock_remove_empty_config(
+            base_path=str(tmp_path),
+            remove_empty=True,
+            dry_run=False
+        )
+    """
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    def _create_config(
+        base_path=TEST_MEDIA_PATH,
+        pattern="**/*.jpg",
+        retention_days=TEST_RETENTION_DAYS,
+        dry_run=False,
+        max_deletes=TEST_MAX_DELETES,
+        remove_empty=False,
+    ):
+        return MockConfigEntry(
+            domain="retention_cleaner",
+            title="Test Remove Empty Folders",
+            data={
+                "base_path": base_path,
+                "pattern": pattern,
+                "retention_days": retention_days,
+                "dry_run": dry_run,
+                "max_deletes": max_deletes,
+                "remove_empty_folders": remove_empty,
+            },
+            entry_id="test_remove_empty_entry",
+        )
+
+    return _create_config

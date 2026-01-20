@@ -19,6 +19,7 @@ from custom_components.retention_cleaner.const import (
     CONF_MAX_FILES_IN_FOLDER,
     CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
+    CONF_REMOVE_EMPTY_FOLDERS,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
     DOMAIN,
@@ -62,6 +63,7 @@ async def test_form_valid_input(hass: HomeAssistant) -> None:
         CONF_MAX_DELETES: 100,
         CONF_KEEP_MINIMUM_FILES: 0,
         CONF_MAX_FILES_IN_FOLDER: 0,
+        CONF_REMOVE_EMPTY_FOLDERS: False,
         CONF_RUN_AT: "02:00",
     }
     assert len(mock_setup_entry.mock_calls) == 1
@@ -286,6 +288,7 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
         CONF_MAX_DELETES: 200,
         CONF_KEEP_MINIMUM_FILES: 0,
         CONF_MAX_FILES_IN_FOLDER: 0,
+        CONF_REMOVE_EMPTY_FOLDERS: False,
         CONF_RUN_AT: "03:00",
     }
 
@@ -1301,3 +1304,71 @@ async def test_options_max_files_warning_when_less_than_keep_minimum(
         and "keep_minimum_files" in record.message
         for record in caplog.records
     ), "Should log warning about conflicting values"
+
+
+async def test_config_flow_includes_remove_empty_folders(hass: HomeAssistant) -> None:
+    """Test that config flow includes remove_empty_folders parameter with default False."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should create entry successfully"
+    assert (
+        "remove_empty_folders" in result2["data"]
+    ), "Should include remove_empty_folders in config"
+    assert (
+        result2["data"]["remove_empty_folders"] is False
+    ), "Default value should be False (opt-in feature)"
+
+
+async def test_config_flow_remove_empty_folders_can_be_enabled(
+    hass: HomeAssistant,
+) -> None:
+    """Test that remove_empty_folders can be explicitly enabled."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/media/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: False,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+                "remove_empty_folders": True,
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should create entry successfully"
+    assert (
+        result2["data"]["remove_empty_folders"] is True
+    ), "Should accept True when explicitly set"
