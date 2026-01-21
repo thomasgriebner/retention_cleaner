@@ -146,6 +146,60 @@ With this configuration:
 
 **Valid Range:** 0-1,000,000 (0 = disabled)
 
+### Folder Size Monitoring Sensors
+
+Track storage usage across your retention cleanup rules with two specialized sensors that update during every scan:
+
+**Total Folder Size Bytes** - Shows the total size in bytes of ALL files that match your configured pattern and extension filters. This gives you real-time visibility into how much storage is being used by the files under management.
+
+**Older Than Retention Size Bytes** - Shows the size in bytes of files that would be deleted in the next cleanup. This helps you predict how much disk space will be freed before running the cleanup.
+
+```yaml
+Base Path: /media/frigate/recordings
+Pattern: **/*.mp4
+Retention Days: 7
+```
+
+With this configuration:
+- `total_folder_size_bytes` shows total size of all MP4 files in the folder
+- `older_than_retention_size_bytes` shows size of MP4 files older than 7 days
+- Both sensors automatically display as KB/MB/GB in Home Assistant UI
+- Values update on every scan (manual or scheduled)
+
+**Key Benefits:**
+- **Zero performance impact**: Size is collected during existing file scan operations
+- **Pattern-aware**: Only counts files matching your configured pattern and extension filters
+- **Dashboard integration**: Use in Lovelace cards, graphs, and automations
+- **Predictive cleanup**: See how much space will be freed before running cleanup
+- **Multi-instance comparison**: Compare storage usage across different cameras or folders
+
+**Use Cases:**
+- Monitor total storage used by camera recordings across multiple devices
+- Set up alerts when folder size exceeds a threshold
+- Compare retention policies between different camera feeds
+- Create graphs showing storage trends over time
+- Predict disk space recovery before running cleanup
+- Verify cleanup effectiveness by tracking before/after sizes
+
+**Complements Existing Sensors:**
+- Works alongside `deleted_bytes_last_run` which tracks actual cleanup results
+- Updates in real-time during scans, not just after cleanup operations
+- Provides forward-looking metrics (what will be deleted) vs historical (what was deleted)
+
+**Example Automation:**
+```yaml
+automation:
+  - alias: "Alert when camera storage exceeds 50GB"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.front_camera_total_folder_size_bytes
+        above: 53687091200  # 50 GB in bytes
+    action:
+      - service: notify.mobile_app
+        data:
+          message: "Front camera storage exceeds 50GB"
+```
+
 ### Remove Empty Subdirectories After Cleanup
 
 Automatically remove empty directory structures after cleaning up old files. This is particularly useful for camera systems that create date-based or event-based folder hierarchies.
@@ -220,6 +274,8 @@ Each cleanup rule provides these entities:
 | **Older than retention** | Files eligible for deletion | files |
 | **Deleted last cleanup** | Files deleted in last run | files |
 | **Deleted bytes last cleanup** | Size of deleted files | bytes |
+| **Total folder size bytes** | Total size of all matched files | bytes |
+| **Older than retention size bytes** | Size of files eligible for deletion | bytes |
 | **Last scan** | Timestamp of last scan | - |
 | **Last cleanup** | Timestamp of last cleanup | - |
 | **Last scan duration** | Performance metric | ms |
@@ -320,6 +376,40 @@ This setup:
 - Removes empty directories after file deletion (e.g., empty `/2024/01/15/camera/` folder)
 - Cleans up recursively until non-empty directory or base_path is reached
 - Preserves directories containing hidden files like `.gitkeep`
+
+### Multi-Camera Storage Monitoring
+
+Monitor storage usage across multiple camera feeds with size sensors:
+
+```yaml
+# Front Door Camera
+Base Path: /media/frigate/recordings/front_door
+Pattern: **/*.mp4
+Retention Days: 14
+
+# Backyard Camera
+Base Path: /media/frigate/recordings/backyard
+Pattern: **/*.mp4
+Retention Days: 7
+
+# Garage Camera
+Base Path: /media/frigate/recordings/garage
+Pattern: **/*.mp4
+Retention Days: 30
+```
+
+This setup provides:
+- **Individual storage tracking**: Each camera gets `total_folder_size_bytes` sensor
+- **Cleanup prediction**: Each camera shows `older_than_retention_size_bytes`
+- **Comparative analysis**: Compare which camera uses most storage
+- **Dashboard cards**: Create graphs showing storage trends per camera
+- **Proactive alerts**: Set up notifications before disk space runs low
+
+**Dashboard Example:**
+The `total_folder_size_bytes` and `older_than_retention_size_bytes` sensors automatically display in GB/MB/KB format in the Home Assistant UI. Create a card showing:
+- Total storage per camera
+- How much will be freed in next cleanup
+- Storage trend graphs over time
 
 ---
 
