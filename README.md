@@ -64,6 +64,7 @@ Each cleanup rule creates a device with the following configuration options:
 | **Except Extensions** | string | - | Delete all files except these extensions (e.g., `.log,.tmp`) - case-insensitive |
 | **Keep Minimum Files** | integer | `0` | Always preserve this many newest files (0-10,000), regardless of retention |
 | **Max Files In Folder** | integer | `0` | Cap total number of files in folder (0-1,000,000), enforced after time-based cleanup (0 = disabled) |
+| **Remove Empty Folders** | boolean | `false` | Remove empty subdirectories after file deletion (opt-in for safety) |
 
 ### Pattern Examples
 
@@ -144,6 +145,56 @@ With this configuration:
 - Backup rotation: Keep only N most recent backups
 
 **Valid Range:** 0-1,000,000 (0 = disabled)
+
+### Remove Empty Subdirectories After Cleanup
+
+Automatically remove empty directory structures after cleaning up old files. This is particularly useful for camera systems that create date-based or event-based folder hierarchies.
+
+```yaml
+Base Path: /media/frigate/recordings
+Pattern: **/*.mp4
+Retention Days: 7
+Remove Empty Folders: true
+```
+
+With this configuration:
+- Files older than 7 days are deleted during cleanup
+- After file deletion, empty parent directories are removed bottom-up
+- Directories containing hidden files (e.g., `.gitkeep`, `.DS_Store`) are preserved
+- The base_path itself is never removed
+
+**How It Works:**
+1. Standard file cleanup runs first (retention days, extension filters, file limits)
+2. Parent directories of deleted files are identified
+3. Directories are checked from deepest to shallowest (bottom-up traversal)
+4. Empty directories are removed (no files and no subdirectories)
+5. Process continues upward until non-empty directory or base_path is reached
+
+**Order of Operations:**
+1. Time-based cleanup (retention_days)
+2. File count enforcement (max_files_in_folder)
+3. Empty directory removal (remove_empty_folders) - runs last
+
+**Interactions with Other Features:**
+- **Dry-run mode:** When `dry_run: true`, directories are logged but not removed
+- **All file cleanup features:** Runs after all file deletion operations complete
+- **Scan operations:** Does not trigger during scan (only during cleanup)
+- **Base path safety:** Never removes the configured `base_path` directory
+- **Hidden files:** Directories containing files starting with `.` are preserved
+
+**Use Cases:**
+- Clean up empty date-based folders after removing old camera recordings (e.g., `/2024/01/15/`)
+- Remove empty camera-specific subdirectories (e.g., `/cameras/front_door/snapshots/`)
+- Maintain clean directory structures in multi-level storage hierarchies
+- Reduce visual clutter in file browsers and media management systems
+
+**Safety Features:**
+- Opt-in by default (feature is disabled unless explicitly enabled)
+- Hidden file preservation (intentional placeholder files like `.gitkeep` prevent removal)
+- Base path protection (configured base_path is never removed)
+- Dry-run support (test the feature safely before enabling actual deletion)
+- Graceful error handling (permission errors are logged but don't stop cleanup)
+- Race condition tolerance (handles concurrent file operations safely)
 
 ### Safety Guidelines
 
@@ -250,6 +301,25 @@ This setup:
 - Deletes videos older than 14 days
 - Always keeps the 5 newest videos (even if older than 14 days)
 - Ignores all non-video files
+
+### Camera Recordings with Empty Directory Cleanup
+
+Keep 14 days of recordings and remove empty date folders:
+
+```yaml
+Base Path: /media/frigate/clips
+Pattern: **/*.mp4
+Retention Days: 14
+Remove Empty Folders: true
+Cleanup Time: 03:00
+Max Deletes: 1000
+```
+
+This setup:
+- Deletes MP4 files older than 14 days from date-based hierarchy (e.g., `/2024/01/15/camera/clip.mp4`)
+- Removes empty directories after file deletion (e.g., empty `/2024/01/15/camera/` folder)
+- Cleans up recursively until non-empty directory or base_path is reached
+- Preserves directories containing hidden files like `.gitkeep`
 
 ---
 

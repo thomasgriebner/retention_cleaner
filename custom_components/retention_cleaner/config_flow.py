@@ -18,6 +18,7 @@ from .const import (
     CONF_MAX_FILES_IN_FOLDER,
     CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
+    CONF_REMOVE_EMPTY_FOLDERS,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
     DEFAULT_DRY_RUN,
@@ -25,6 +26,7 @@ from .const import (
     DEFAULT_MAX_DELETES,
     DEFAULT_MAX_FILES_IN_FOLDER,
     DEFAULT_PATTERN,
+    DEFAULT_REMOVE_EMPTY_FOLDERS,
     DEFAULT_RETENTION_DAYS,
     DEFAULT_RUN_AT,
     DOMAIN,
@@ -418,6 +420,11 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_MAX_DELETES: max_deletes,
                     CONF_KEEP_MINIMUM_FILES: keep_minimum_files,
                     CONF_MAX_FILES_IN_FOLDER: max_files_in_folder,
+                    CONF_REMOVE_EMPTY_FOLDERS: bool(
+                        user_input.get(
+                            CONF_REMOVE_EMPTY_FOLDERS, DEFAULT_REMOVE_EMPTY_FOLDERS
+                        )
+                    ),
                 }
 
                 title = base_path.split("/")[-1] or base_path
@@ -477,6 +484,9 @@ class RetentionCleanerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_MAX_FILES_IN_FOLDER, default=DEFAULT_MAX_FILES_IN_FOLDER
                 ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_REMOVE_EMPTY_FOLDERS, default=DEFAULT_REMOVE_EMPTY_FOLDERS
+                ): bool,
             }
         )
 
@@ -557,6 +567,11 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                         CONF_MAX_DELETES: max_deletes,
                         CONF_KEEP_MINIMUM_FILES: keep_minimum_files,
                         CONF_MAX_FILES_IN_FOLDER: max_files_in_folder,
+                        CONF_REMOVE_EMPTY_FOLDERS: bool(
+                            user_input.get(
+                                CONF_REMOVE_EMPTY_FOLDERS, DEFAULT_REMOVE_EMPTY_FOLDERS
+                            )
+                        ),
                     },
                 )
 
@@ -628,6 +643,12 @@ class RetentionCleanerOptionsFlow(config_entries.OptionsFlow):
                         CONF_MAX_FILES_IN_FOLDER, DEFAULT_MAX_FILES_IN_FOLDER
                     ),
                 ): vol.Coerce(int),
+                vol.Optional(
+                    CONF_REMOVE_EMPTY_FOLDERS,
+                    default=current.get(
+                        CONF_REMOVE_EMPTY_FOLDERS, DEFAULT_REMOVE_EMPTY_FOLDERS
+                    ),
+                ): bool,
             }
         )
 

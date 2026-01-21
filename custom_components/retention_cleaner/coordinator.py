@@ -24,11 +24,13 @@ from .const import (
     CONF_MAX_FILES_IN_FOLDER,
     CONF_ONLY_EXTENSIONS,
     CONF_PATTERN,
+    CONF_REMOVE_EMPTY_FOLDERS,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
     COORDINATOR_UPDATE_INTERVAL_SECONDS,
     DEFAULT_KEEP_MINIMUM_FILES,
     DEFAULT_MAX_FILES_IN_FOLDER,
+    DEFAULT_REMOVE_EMPTY_FOLDERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -315,6 +317,127 @@ def _scan_folder(
     )
 
 
+def _remove_empty_directories(
+    base_path: str,
+    deleted_file_paths: set[Path],
+    dry_run: bool,
+) -> int:
+    """Remove empty directories after file cleanup (bottom-up).
+
+    Args:
+        base_path: Base path boundary (never remove this).
+        deleted_file_paths: Set of deleted file paths.
+        dry_run: If True, log but don't actually remove.
+
+    Returns:
+        Number of directories removed.
+
+    Algorithm:
+        1. Extract unique parent directories from deleted_file_paths
+        2. Iteratively check and remove empty directories bottom-up
+        3. After removing a directory, add its parent to the check list
+        4. Continue until no more empty directories are found
+
+    Safety:
+        - Never removes base_path itself
+        - Only removes directories within base_path
+        - Preserves directories with hidden files
+        - Respects dry_run mode
+        - Handles race conditions gracefully
+    """
+    base_path_obj = Path(base_path)
+    removed_dirs = 0
+
+    # Extract parent directories from deleted files
+    dirs_to_check = {p.parent for p in deleted_file_paths}
+
+    # Filter out base_path itself
+    dirs_to_check = {d for d in dirs_to_check if d != base_path_obj}
+
+    # Iteratively remove empty directories bottom-up
+    while dirs_to_check:
+        # Sort by depth (deepest first) for bottom-up removal
+        sorted_dirs = sorted(dirs_to_check, key=lambda p: len(p.parts), reverse=True)
+
+        # Track which directories were actually removed this iteration
+        removed_this_round = set()
+
+        for dir_path in sorted_dirs:
+            # Skip if already processed in this round
+            if dir_path in removed_this_round:
+                continue
+
+            try:
+                # Check if directory exists (race condition tolerance)
+                if not dir_path.exists():
+                    continue
+
+                # Check if directory is empty or would be empty after deletion
+                # In dry run mode, files haven't been deleted yet, so check if all remaining
+                # files in the directory are in the deleted_file_paths set
+                remaining_items = list(dir_path.iterdir())
+
+                if dry_run:
+                    # In dry run, check if directory WOULD be empty (all files scheduled for deletion)
+                    would_be_empty = all(
+                        item in deleted_file_paths or item.is_dir()
+                        for item in remaining_items
+                    )
+                    if not would_be_empty:
+                        # Directory would still have files, skip it
+                        continue
+                else:
+                    # In normal mode, check if directory IS empty now
+                    if remaining_items:
+                        # Directory not empty, skip it
+                        continue
+
+                # Directory is empty (or would be empty in dry run) - remove it (respect dry_run)
+                if dry_run:
+                    _LOGGER.debug(
+                        "[DRY-RUN] Would remove empty directory: %s", dir_path
+                    )
+                    removed_this_round.add(dir_path)
+
+                    # In dry run, also check parent directory
+                    parent = dir_path.parent
+                    if parent != base_path_obj and parent not in removed_this_round:
+                        dirs_to_check.add(parent)
+                else:
+                    dir_path.rmdir()
+                    removed_dirs += 1
+                    removed_this_round.add(dir_path)
+                    _LOGGER.debug("Removed empty directory: %s", dir_path)
+
+                    # Add parent directory to check if it's now empty
+                    parent = dir_path.parent
+                    if parent != base_path_obj and parent not in removed_this_round:
+                        dirs_to_check.add(parent)
+
+            except FileNotFoundError:
+                # Already removed (race condition) - count as success
+                removed_dirs += 1
+                removed_this_round.add(dir_path)
+            except OSError as err:
+                if err.errno == errno.ENOTEMPTY:
+                    _LOGGER.debug("Directory not empty (race condition): %s", dir_path)
+                elif err.errno == errno.EACCES:
+                    _LOGGER.warning(
+                        "Permission denied removing directory: %s", dir_path
+                    )
+                else:
+                    _LOGGER.warning("Failed to remove directory %s: %s", dir_path, err)
+
+        # Remove processed directories from the check list
+        dirs_to_check -= removed_this_round
+
+        # If we didn't remove anything this round, no point continuing
+        if not removed_this_round:
+            break
+
+    return removed_dirs
+
+
 def _cleanup_folder(
     base_path: str,
     pattern: str,
@@ -325,6 +448,7 @@ def _cleanup_folder(
     except_ext_set: set[str] | None = None,
     keep_minimum_files: int = 0,
     max_files_in_folder: int = 0,
+    remove_empty_folders: bool = False,
 ) -> CleanupResult:
     """Delete files older than retention period with safety limits.
 
@@ -334,6 +458,7 @@ def _cleanup_folder(
     Order of operations:
         1. Time-based cleanup (retention_days) happens first
         2. File count enforcement (max_files_in_folder) happens second on remaining files
+        3. Empty directory removal (if enabled) happens after file deletion
 
     Args:
         base_path: Absolute path to the folder to clean.
@@ -346,6 +471,7 @@ def _cleanup_folder(
         except_ext_set: Set of extensions to never delete (lowercase with dots).
         keep_minimum_files: Minimum number of newest files to always preserve.
         max_files_in_folder: Maximum number of files to keep (0 = disabled).
+        remove_empty_folders: If True, remove empty directories after file deletion.
 
     Returns:
         CleanupResult: Contains number of deleted files, remaining files,
@@ -365,6 +491,7 @@ def _cleanup_folder(
         - Critical errors (disk full, read-only FS) abort the operation.
         - Extension matching is case-insensitive.
         - max_files_in_folder takes priority over keep_minimum_files.
+        - Empty directory removal respects dry_run and never removes base_path.
     """
     base = Path(base_path)
 
@@ -376,7 +503,7 @@ def _cleanup_folder(
     if only_ext_set or except_ext_set:
         search_pattern = ALL_FILES_PATTERN
         _LOGGER.debug(
-            "Starting cleanup of %s with extension filter (only=%d exts, except=%d exts, retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d, max_files: %d)",
+            "Starting cleanup of %s with extension filter (only=%d exts, except=%d exts, retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d, max_files: %d, remove_empty: %s)",
             base_path,
             len(only_ext_set),
             len(except_ext_set),
@@ -385,6 +512,7 @@ def _cleanup_folder(
             max_deletes,
             keep_minimum_files,
             max_files_in_folder,
+            remove_empty_folders,
         )
     else:
         # Safety check: ensure pattern is not empty
@@ -394,7 +522,7 @@ def _cleanup_folder(
             )
         search_pattern = pattern
         _LOGGER.debug(
-            "Starting cleanup of %s with pattern '%s' (retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d, max_files: %d)",
+            "Starting cleanup of %s with pattern '%s' (retention: %d days, dry_run: %s, max_deletes: %d, keep_minimum: %d, max_files: %d, remove_empty: %s)",
             base_path,
             pattern,
             retention_days,
@@ -402,6 +530,7 @@ def _cleanup_folder(
             max_deletes,
             keep_minimum_files,
             max_files_in_folder,
+            remove_empty_folders,
         )
 
     if not base.exists() or not base.is_dir():
@@ -483,6 +612,9 @@ def _cleanup_folder(
                     _LOGGER.debug("[DRY-RUN] Would delete: %s", file_path.name)
                     total_after += 1
                     older_remaining += 1
+                    deleted_files.add(
+                        file_path
+                    )  # Track would-be-deleted files for directory removal
                     continue
 
                 if deleted >= max_deletes:
@@ -583,6 +715,7 @@ def _cleanup_folder(
                         "[DRY-RUN] Would delete for file count limit: %s",
                         file_path.name,
                     )
+                    deleted_files.add(file_path)  # Track would-be-deleted files
                     # Don't modify counters in dry run
                     continue
 
@@ -592,6 +725,7 @@ def _cleanup_folder(
                     deleted_bytes += file_size
                     total_after -= 1
                     files_deleted_for_count += 1
+                    deleted_files.add(file_path)  # Track deleted files
                     # Update older_remaining if this was an old file
                     if mtime < cutoff_ts:
                         older_remaining -= 1
@@ -608,6 +742,7 @@ def _cleanup_folder(
                     deleted += 1
                     total_after -= 1
                     files_deleted_for_count += 1
+                    deleted_files.add(file_path)  # Track as deleted
                     # Update older_remaining if this was an old file
                     if mtime < cutoff_ts:
                         older_remaining -= 1
@@ -636,6 +771,12 @@ def _cleanup_folder(
                     files_deleted_for_count,
                     max_files_in_folder,
                 )
+
+        # Step 6: Remove empty directories if enabled
+        if remove_empty_folders and deleted_files:
+            removed_dirs = _remove_empty_directories(base_path, deleted_files, dry_run)
+            if removed_dirs > 0:
+                _LOGGER.debug("Removed %d empty directories", removed_dirs)
 
     except PermissionError as e:
         _LOGGER.error("No permission to access directory %s: %s", base_path, str(e))
@@ -817,6 +958,17 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return int(self.cfg.get(CONF_MAX_FILES_IN_FOLDER, DEFAULT_MAX_FILES_IN_FOLDER))
 
     @property
+    def remove_empty_folders(self) -> bool:
+        """Check if empty folder removal is enabled.
+
+        Returns:
+            bool: True if empty directories should be removed after cleanup.
+        """
+        return bool(
+            self.cfg.get(CONF_REMOVE_EMPTY_FOLDERS, DEFAULT_REMOVE_EMPTY_FOLDERS)
+        )
+
+    @property
     def run_at(self) -> dt_time:
         """Get the scheduled daily cleanup time.
 
@@ -935,6 +1087,7 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.except_extensions_set,
                 self.keep_minimum_files,
                 self.max_files_in_folder,
+                self.remove_empty_folders,
                 max_retries=2,  # Fewer retries for cleanup (safety)
                 delay=1.0,  # Longer initial delay
             )
