@@ -49,6 +49,24 @@ SENSOR_DEFS = [
         SensorStateClass.MEASUREMENT,
     ),
     (
+        "total_folder_size_bytes",
+        "Total Folder Size Bytes",
+        UnitOfInformation.BYTES,
+        "mdi:folder-multiple",
+        None,
+        SensorDeviceClass.DATA_SIZE,
+        SensorStateClass.MEASUREMENT,
+    ),
+    (
+        "older_than_retention_size_bytes",
+        "Older Than Retention Size Bytes",
+        UnitOfInformation.BYTES,
+        "mdi:delete-clock",
+        None,
+        SensorDeviceClass.DATA_SIZE,
+        SensorStateClass.MEASUREMENT,
+    ),
+    (
         "last_scan",
         "Last scan",
         None,
@@ -202,6 +220,8 @@ class RetentionCleanerSensor(
                 "older_than_retention",
                 "deleted_last_run",
                 "deleted_bytes_last_run",
+                "total_folder_size_bytes",
+                "older_than_retention_size_bytes",
                 "last_scan_duration_ms",
                 "last_cleanup_duration_ms",
             ):

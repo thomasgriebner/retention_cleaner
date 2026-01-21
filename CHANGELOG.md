@@ -33,6 +33,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Respects `dry_run` mode for safe testing
   - Gracefully handles race conditions and permission errors
   - Default: false (opt-in for safety)
+- Folder size monitoring sensors for storage tracking
+  - `total_folder_size_bytes` sensor: Shows total size of all files matching pattern/extension filters
+  - `older_than_retention_size_bytes` sensor: Shows size of files eligible for deletion
+  - Both sensors use DATA_SIZE device class for automatic unit conversion (KB/MB/GB)
+  - Zero performance impact: Size calculated during existing file scan
+  - Updates on every scan operation
+  - Useful for comparing storage usage across multiple cleanup rules
 
 ### Changed
 - Improved code quality with refactored helpers and reduced duplication

@@ -51,11 +51,15 @@ class ScanResult:
         total_files: Total number of files matching the pattern.
         older_than_retention: Number of files older than retention period.
         path_available: Whether the base path exists and is accessible.
+        total_size_bytes: Total size in bytes of all matched files.
+        older_than_retention_size_bytes: Total size in bytes of files older than retention.
     """
 
     total_files: int
     older_than_retention: int
     path_available: bool
+    total_size_bytes: int = 0
+    older_than_retention_size_bytes: int = 0
 
 
 @dataclass
@@ -265,12 +269,20 @@ def _scan_folder(
 
     if not base.exists() or not base.is_dir():
         _LOGGER.warning("Path not accessible or not a directory: %s", base_path)
-        return ScanResult(total_files=0, older_than_retention=0, path_available=False)
+        return ScanResult(
+            total_files=0,
+            older_than_retention=0,
+            path_available=False,
+            total_size_bytes=0,
+            older_than_retention_size_bytes=0,
+        )
 
     cutoff_ts = datetime.now(UTC).timestamp() - (retention_days * 24 * 60 * 60)
 
     total = 0
     older = 0
+    total_size = 0
+    older_size = 0
 
     try:
         for p in base.glob(search_pattern):
@@ -283,21 +295,27 @@ def _scan_folder(
 
             total += 1
             try:
-                if p.stat().st_mtime < cutoff_ts:
+                stat_info = p.stat()  # Get stat once for both mtime and size
+                total_size += stat_info.st_size
+                if stat_info.st_mtime < cutoff_ts:
                     older += 1
+                    older_size += stat_info.st_size
             except FileNotFoundError:
                 # Race condition: file was deleted between glob and stat
                 _LOGGER.debug(
                     "File disappeared during scan (race condition): %s", p.name
                 )
                 total -= 1  # Don't count files that no longer exist
+                # Don't add to size counters - file doesn't exist
             except PermissionError as err:
                 _LOGGER.warning("No permission to access file %s: %s", p.name, err)
-                # Keep file counted but can't check age
+                # Keep file counted but can't check age or size
+                # Don't add to size counters - can't determine size
             except OSError as err:
                 # Other OS errors (network issues, etc)
                 _LOGGER.debug("Cannot stat file %s: %s", p.name, err)
-                # Keep file counted but can't check age
+                # Keep file counted but can't check age or size
+                # Don't add to size counters - can't determine size
     except PermissionError as e:
         _LOGGER.error("No permission to access directory %s: %s", base_path, str(e))
         raise RuntimeError(f"Permission denied accessing {base_path}") from e
@@ -306,14 +324,20 @@ def _scan_folder(
         raise RuntimeError(f"Scan failed: {e!s}") from e
 
     _LOGGER.debug(
-        "Scan complete for %s: %d total files, %d older than %d days",
+        "Scan complete for %s: %d total files (%d bytes), %d older than %d days (%d bytes)",
         base_path,
         total,
+        total_size,
         older,
         retention_days,
+        older_size,
     )
     return ScanResult(
-        total_files=total, older_than_retention=older, path_available=True
+        total_files=total,
+        older_than_retention=older,
+        path_available=True,
+        total_size_bytes=total_size,
+        older_than_retention_size_bytes=older_size,
     )
 
 
@@ -1197,4 +1221,6 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "last_cleanup": self.last_cleanup,
             "last_scan_duration_ms": self.last_scan_duration_ms,
             "last_cleanup_duration_ms": self.last_cleanup_duration_ms,
+            "total_folder_size_bytes": result.total_size_bytes,
+            "older_than_retention_size_bytes": result.older_than_retention_size_bytes,
         }

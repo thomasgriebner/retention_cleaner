@@ -47,6 +47,11 @@ TEST_DIR_DEPTH_SHALLOW = 1
 TEST_DIR_DEPTH_MEDIUM = 3
 TEST_DIR_DEPTH_DEEP = 5
 
+# File size constants (bytes) for size sensor tests
+TEST_FILE_SIZE_SMALL = 1024  # 1 KB
+TEST_FILE_SIZE_MEDIUM = 102400  # 100 KB
+TEST_FILE_SIZE_LARGE = 1048576  # 1 MB
+
 
 def pytest_configure(config):
     """Configure pytest - ensures custom_components is in sys.path early."""
@@ -274,6 +279,8 @@ def mock_coordinator_data():
         "last_scan_duration_ms": 150,  # int milliseconds
         "last_cleanup_duration_ms": 500,  # int milliseconds
         "path_available": True,
+        "total_folder_size_bytes": 2097152,  # 2 MB
+        "older_than_retention_size_bytes": 1048576,  # 1 MB
     }
 
 

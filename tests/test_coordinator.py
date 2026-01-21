@@ -847,6 +847,312 @@ async def test_path_traversal_attack_prevention():
             # Rejection is also acceptable for security
             assert "base_path_not_media" in str(exc_info)
 
+
+# ============================================================================
+# FOLDER SIZE BYTE SENSORS - TDD TESTS
+# ============================================================================
+
+
+async def test_scan_result_accepts_size_bytes_fields():
+    """Test ScanResult dataclass accepts size byte fields."""
+    from custom_components.retention_cleaner.coordinator import ScanResult
+
+    result = ScanResult(
+        total_files=10,
+        older_than_retention=5,
+        path_available=True,
+        total_size_bytes=2097152,
+        older_than_retention_size_bytes=1048576,
+    )
+
+    assert result.total_files == 10, "Should store total_files count"
+    assert result.older_than_retention == 5, "Should store older_than_retention count"
+    assert result.path_available is True, "Should store path_available status"
+    assert result.total_size_bytes == 2097152, "Should store total size in bytes"
+    assert (
+        result.older_than_retention_size_bytes == 1048576
+    ), "Should store old files size in bytes"
+
+
+async def test_scan_result_size_bytes_default_to_zero():
+    """Test ScanResult size byte fields default to 0."""
+    from custom_components.retention_cleaner.coordinator import ScanResult
+
+    result = ScanResult(
+        total_files=10,
+        older_than_retention=5,
+        path_available=True,
+    )
+
+    assert result.total_size_bytes == 0, "Should default total_size_bytes to 0"
+    assert (
+        result.older_than_retention_size_bytes == 0
+    ), "Should default older_than_retention_size_bytes to 0"
+
+
+@pytest.mark.parametrize(
+    ("file_sizes", "file_ages_days", "expected_total_bytes", "expected_old_bytes"),
+    [
+        # Empty folder
+        ([], [], 0, 0),
+        # All files within retention (7 days)
+        ([1024, 2048, 4096], [2, 3, 5], 7168, 0),
+        # All files older than retention (8+ days old)
+        ([1024, 2048, 4096], [8, 9, 10], 7168, 7168),
+        # Mixed ages - some old, some new
+        ([1024, 2048, 4096, 8192], [2, 8, 5, 10], 15360, 10240),
+        # Single file scenarios
+        ([1048576], [2], 1048576, 0),
+        ([1048576], [8], 1048576, 1048576),
+    ],
+    ids=[
+        "empty_folder",
+        "all_within_retention",
+        "all_older_than_retention",
+        "mixed_ages",
+        "single_new_file",
+        "single_old_file",
+    ],
+)
+async def test_scan_folder_returns_correct_size_bytes(
+    tmp_path,
+    file_sizes,
+    file_ages_days,
+    expected_total_bytes,
+    expected_old_bytes,
+):
+    """Test _scan_folder() returns correct byte sizes for various scenarios."""
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+    from tests.conftest import TEST_RETENTION_DAYS
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    for i, (size, age_days) in enumerate(zip(file_sizes, file_ages_days, strict=False)):
+        file_path = media_dir / f"test_{i}.jpg"
+        file_path.write_bytes(b"x" * size)
+
+        old_time = time_module.time() - (age_days * 24 * 60 * 60)
+        os.utime(file_path, (old_time, old_time))
+
+    result = _scan_folder(
+        str(media_dir),
+        "*.jpg",
+        TEST_RETENTION_DAYS,
+    )
+
+    assert (
+        result.total_size_bytes == expected_total_bytes
+    ), f"Should calculate total size as {expected_total_bytes} bytes"
+    assert (
+        result.older_than_retention_size_bytes == expected_old_bytes
+    ), f"Should calculate old files size as {expected_old_bytes} bytes"
+    assert result.total_files == len(file_sizes), "Should count correct number of files"
+
+
+async def test_scan_folder_size_bytes_with_extension_filters(tmp_path):
+    """Test size calculation respects extension filters."""
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+    from tests.conftest import (
+        TEST_FILE_SIZE_LARGE,
+        TEST_FILE_SIZE_MEDIUM,
+        TEST_FILE_SIZE_SMALL,
+        TEST_RETENTION_DAYS,
+    )
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    mp4_file = media_dir / "video.mp4"
+    mp4_file.write_bytes(b"x" * TEST_FILE_SIZE_LARGE)
+
+    jpg_file = media_dir / "photo.jpg"
+    jpg_file.write_bytes(b"x" * TEST_FILE_SIZE_MEDIUM)
+
+    log_file = media_dir / "debug.log"
+    log_file.write_bytes(b"x" * TEST_FILE_SIZE_SMALL)
+
+    old_time = time_module.time() - (8 * 24 * 60 * 60)
+    for file in [mp4_file, jpg_file, log_file]:
+        os.utime(file, (old_time, old_time))
+
+    result = _scan_folder(
+        str(media_dir),
+        "",
+        TEST_RETENTION_DAYS,
+        only_ext_set={".mp4", ".jpg"},
+    )
+
+    expected_size = TEST_FILE_SIZE_LARGE + TEST_FILE_SIZE_MEDIUM
+    assert (
+        result.total_size_bytes == expected_size
+    ), "Should only count .mp4 and .jpg file sizes"
+    assert result.total_files == 2, "Should only count filtered files"
+
+
+async def test_scan_folder_size_bytes_file_not_found_error(tmp_path):
+    """Test size calculation handles FileNotFoundError during stat."""
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+    from tests.conftest import TEST_RETENTION_DAYS
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        mock_file1 = Mock()
+        mock_file1.is_file.return_value = True
+        mock_file1.name = "file1.jpg"
+        mock_file1.suffix = ".jpg"
+        mock_file1.stat.side_effect = FileNotFoundError("File deleted during scan")
+
+        mock_base.glob.return_value = [mock_file1]
+
+        result = _scan_folder(
+            "/media/test",
+            "*.jpg",
+            TEST_RETENTION_DAYS,
+        )
+
+        assert result.total_size_bytes == 0, "Should not count size of missing file"
+        assert result.total_files == 0, "Should not count missing file"
+
+
+async def test_scan_folder_size_bytes_permission_error(tmp_path):
+    """Test size calculation handles PermissionError during stat."""
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+    from tests.conftest import TEST_RETENTION_DAYS
+
+    with patch(
+        "custom_components.retention_cleaner.coordinator.Path"
+    ) as mock_path_class:
+        mock_base = Mock()
+        mock_path_class.return_value = mock_base
+
+        mock_base.exists.return_value = True
+        mock_base.is_dir.return_value = True
+
+        mock_file1 = Mock()
+        mock_file1.is_file.return_value = True
+        mock_file1.name = "restricted.jpg"
+        mock_file1.suffix = ".jpg"
+        mock_file1.stat.side_effect = PermissionError("No access")
+
+        mock_base.glob.return_value = [mock_file1]
+
+        result = _scan_folder(
+            "/media/test",
+            "*.jpg",
+            TEST_RETENTION_DAYS,
+        )
+
+        assert result.total_files == 1, "Should count file despite permission error"
+        assert result.total_size_bytes == 0, "Should not add size when stat fails"
+
+
+async def test_scan_folder_size_bytes_with_zero_size_files(tmp_path):
+    """Test size calculation handles zero-size files correctly."""
+    from custom_components.retention_cleaner.coordinator import _scan_folder
+    from tests.conftest import TEST_RETENTION_DAYS
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    empty_file = media_dir / "empty.jpg"
+    empty_file.touch()
+
+    old_time = time_module.time() - (8 * 24 * 60 * 60)
+    os.utime(empty_file, (old_time, old_time))
+
+    result = _scan_folder(
+        str(media_dir),
+        "*.jpg",
+        TEST_RETENTION_DAYS,
+    )
+
+    assert result.total_files == 1, "Should count zero-size file"
+    assert (
+        result.total_size_bytes == 0
+    ), "Should correctly report 0 bytes for empty file"
+    assert (
+        result.older_than_retention_size_bytes == 0
+    ), "Should correctly report 0 bytes for old empty file"
+
+
+async def test_coordinator_returns_size_bytes_in_data_dict(
+    hass: HomeAssistant, mock_setup_entry, tmp_path
+):
+    """Test coordinator._async_update_data() returns size byte fields."""
+    from tests.conftest import TEST_FILE_SIZE_MEDIUM, TEST_FILE_SIZE_SMALL
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    new_file = media_dir / "new.jpg"
+    new_file.write_bytes(b"x" * TEST_FILE_SIZE_SMALL)
+    new_time = time_module.time() - (2 * 24 * 60 * 60)
+    os.utime(new_file, (new_time, new_time))
+
+    old_file = media_dir / "old.jpg"
+    old_file.write_bytes(b"x" * TEST_FILE_SIZE_MEDIUM)
+    old_time = time_module.time() - (8 * 24 * 60 * 60)
+    os.utime(old_file, (old_time, old_time))
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+        },
+        entry_id="test_entry_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        assert coordinator.data is not None, "Coordinator should have data"
+        assert (
+            "total_folder_size_bytes" in coordinator.data
+        ), "Should include total_folder_size_bytes key"
+        assert (
+            "older_than_retention_size_bytes" in coordinator.data
+        ), "Should include older_than_retention_size_bytes key"
+
+        expected_total = TEST_FILE_SIZE_SMALL + TEST_FILE_SIZE_MEDIUM
+        assert (
+            coordinator.data["total_folder_size_bytes"] == expected_total
+        ), f"Should calculate total size as {expected_total}"
+        assert (
+            coordinator.data["older_than_retention_size_bytes"] == TEST_FILE_SIZE_MEDIUM
+        ), f"Should calculate old files size as {TEST_FILE_SIZE_MEDIUM}"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_cleanup_result_tracks_deleted_bytes_already_exists():
+    """Test that CleanupResult already has deleted_bytes field (existing feature)."""
+    from custom_components.retention_cleaner.config_flow import _validate_base_path
+    from custom_components.retention_cleaner.coordinator import CleanupResult
+
+    result = CleanupResult(
+        deleted=5,
+        total_after=10,
+        older_remaining=2,
+        path_available=True,
+        deleted_bytes=102400,
+    )
+
+    assert result.deleted_bytes == 102400, "CleanupResult should track deleted_bytes"
+
     # Valid paths should work
     valid_paths = [
         "/media/cameras",
@@ -857,9 +1163,9 @@ async def test_path_traversal_attack_prevention():
     ]
 
     for path in valid_paths:
-        result = _validate_base_path(path)
-        assert result.startswith("/media/")
-        assert not result.endswith("/")  # Should strip trailing slash
+        result_path = _validate_base_path(path)
+        assert result_path.startswith("/media/")
+        assert not result_path.endswith("/")  # Should strip trailing slash
 
 
 async def test_symlink_attack_prevention(tmp_path):
@@ -1769,6 +2075,7 @@ def test_scan_file_race_condition_handling():
         mock_file2.name = "file2.jpg"
         mock_stat2 = Mock()
         mock_stat2.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat2.st_size = 1024
         mock_file2.stat.return_value = mock_stat2
 
         mock_file3 = Mock()
@@ -1776,6 +2083,7 @@ def test_scan_file_race_condition_handling():
         mock_file3.name = "file3.jpg"
         mock_stat3 = Mock()
         mock_stat3.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat3.st_size = 2048
         mock_file3.stat.return_value = mock_stat3
 
         mock_base.glob.return_value = [mock_file1, mock_file2, mock_file3]
@@ -1825,6 +2133,7 @@ def test_scan_file_multiple_exception_types():
         mock_file_old.name = "old_file.jpg"
         mock_stat_old = Mock()
         mock_stat_old.st_mtime = time_module.time() - (8 * 24 * 60 * 60)
+        mock_stat_old.st_size = 4096
         mock_file_old.stat.return_value = mock_stat_old
 
         mock_file_new = Mock()
@@ -1832,6 +2141,7 @@ def test_scan_file_multiple_exception_types():
         mock_file_new.name = "new_file.jpg"
         mock_stat_new = Mock()
         mock_stat_new.st_mtime = time_module.time() - (2 * 24 * 60 * 60)
+        mock_stat_new.st_size = 512
         mock_file_new.stat.return_value = mock_stat_new
 
         mock_base.glob.return_value = [

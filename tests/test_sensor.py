@@ -384,3 +384,168 @@ async def test_sensor_restore_other_sensor_type(hass: HomeAssistant, init_integr
 
     entity._restored_last_state = "custom_value_123"
     assert entity.native_value == "custom_value_123"
+
+
+# ============================================================================
+# FOLDER SIZE BYTE SENSORS - TDD TESTS
+# ============================================================================
+
+
+async def test_total_folder_size_bytes_sensor_exists_in_registry(
+    hass: HomeAssistant, init_integration
+):
+    """Test total_folder_size_bytes sensor is created in entity registry."""
+    registry = er.async_get(hass)
+
+    entry = registry.async_get("sensor.test_cleanup_total_folder_size_bytes")
+    assert entry is not None, "total_folder_size_bytes sensor should exist"
+    assert (
+        entry.unique_id == f"{init_integration.entry_id}_total_folder_size_bytes"
+    ), "Should have correct unique_id format"
+
+
+async def test_older_than_retention_size_bytes_sensor_exists_in_registry(
+    hass: HomeAssistant, init_integration
+):
+    """Test older_than_retention_size_bytes sensor is created in entity registry."""
+    registry = er.async_get(hass)
+
+    entry = registry.async_get("sensor.test_cleanup_older_than_retention_size_bytes")
+    assert entry is not None, "older_than_retention_size_bytes sensor should exist"
+    assert (
+        entry.unique_id
+        == f"{init_integration.entry_id}_older_than_retention_size_bytes"
+    ), "Should have correct unique_id format"
+
+
+async def test_size_sensors_have_correct_device_class(
+    hass: HomeAssistant, init_integration
+):
+    """Test size byte sensors have DATA_SIZE device class."""
+    state_total = hass.states.get("sensor.test_cleanup_total_folder_size_bytes")
+    assert state_total is not None, "total_folder_size_bytes state should exist"
+    assert (
+        state_total.attributes.get("device_class") == SensorDeviceClass.DATA_SIZE
+    ), "Should have DATA_SIZE device class"
+
+    state_old = hass.states.get("sensor.test_cleanup_older_than_retention_size_bytes")
+    assert state_old is not None, "older_than_retention_size_bytes state should exist"
+    assert (
+        state_old.attributes.get("device_class") == SensorDeviceClass.DATA_SIZE
+    ), "Should have DATA_SIZE device class"
+
+
+async def test_size_sensors_have_correct_unit(hass: HomeAssistant, init_integration):
+    """Test size byte sensors have BYTES unit."""
+    state_total = hass.states.get("sensor.test_cleanup_total_folder_size_bytes")
+    assert state_total is not None, "total_folder_size_bytes state should exist"
+    assert (
+        state_total.attributes.get("unit_of_measurement") == UnitOfInformation.BYTES
+    ), "Should have BYTES unit"
+
+    state_old = hass.states.get("sensor.test_cleanup_older_than_retention_size_bytes")
+    assert state_old is not None, "older_than_retention_size_bytes state should exist"
+    assert (
+        state_old.attributes.get("unit_of_measurement") == UnitOfInformation.BYTES
+    ), "Should have BYTES unit"
+
+
+async def test_size_sensors_have_correct_state_class(
+    hass: HomeAssistant, init_integration
+):
+    """Test size byte sensors have MEASUREMENT state class."""
+    state_total = hass.states.get("sensor.test_cleanup_total_folder_size_bytes")
+    assert state_total is not None, "total_folder_size_bytes state should exist"
+    assert (
+        state_total.attributes.get("state_class") == SensorStateClass.MEASUREMENT
+    ), "Should have MEASUREMENT state class"
+
+    state_old = hass.states.get("sensor.test_cleanup_older_than_retention_size_bytes")
+    assert state_old is not None, "older_than_retention_size_bytes state should exist"
+    assert (
+        state_old.attributes.get("state_class") == SensorStateClass.MEASUREMENT
+    ), "Should have MEASUREMENT state class"
+
+
+async def test_size_sensors_update_from_coordinator_data(
+    hass: HomeAssistant, init_integration
+):
+    """Test size byte sensors update when coordinator data changes."""
+    from datetime import UTC, datetime
+
+    coordinator = init_integration.runtime_data
+
+    coordinator.data = {
+        "total_files": 100,
+        "older_than_retention": 25,
+        "deleted_last_run": 10,
+        "deleted_bytes_last_run": 102400,
+        "last_scan": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+        "last_cleanup": datetime(2024, 1, 1, 2, 0, 0, tzinfo=UTC),
+        "last_scan_duration_ms": 150,
+        "last_cleanup_duration_ms": 500,
+        "total_folder_size_bytes": 2097152,
+        "older_than_retention_size_bytes": 1048576,
+    }
+
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    state_total = hass.states.get("sensor.test_cleanup_total_folder_size_bytes")
+    assert state_total.state == "2097152", "Should display total folder size in bytes"
+
+    state_old = hass.states.get("sensor.test_cleanup_older_than_retention_size_bytes")
+    assert state_old.state == "1048576", "Should display old files size in bytes"
+
+
+async def test_size_sensors_handle_missing_data(hass: HomeAssistant, init_integration):
+    """Test size byte sensors handle missing data gracefully."""
+    coordinator = init_integration.runtime_data
+
+    coordinator.data = {
+        "total_files": 50,
+    }
+
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    state_total = hass.states.get("sensor.test_cleanup_total_folder_size_bytes")
+    assert state_total.state in [
+        "0",
+        "unknown",
+    ], "Should have safe default for missing total_folder_size_bytes"
+
+    state_old = hass.states.get("sensor.test_cleanup_older_than_retention_size_bytes")
+    assert state_old.state in [
+        "0",
+        "unknown",
+    ], "Should have safe default for missing older_than_retention_size_bytes"
+
+
+async def test_size_sensors_linked_to_device(hass: HomeAssistant, init_integration):
+    """Test size byte sensors are linked to the correct device."""
+    from custom_components.retention_cleaner.const import DOMAIN
+
+    registry = er.async_get(hass)
+
+    entry_total = registry.async_get("sensor.test_cleanup_total_folder_size_bytes")
+    assert entry_total is not None, "total_folder_size_bytes entry should exist"
+    assert entry_total.device_id is not None, "Should be linked to device"
+
+    entry_old = registry.async_get(
+        "sensor.test_cleanup_older_than_retention_size_bytes"
+    )
+    assert entry_old is not None, "older_than_retention_size_bytes entry should exist"
+    assert entry_old.device_id is not None, "Should be linked to device"
+
+    try:
+        device_registry = hass.helpers.device_registry.async_get()
+    except TypeError:
+        device_registry = hass.helpers.device_registry.async_get(hass)
+
+    device = device_registry.async_get_device(
+        identifiers={(DOMAIN, init_integration.entry_id)}
+    )
+    assert device is not None, "Device should exist"
+    assert entry_total.device_id == device.id, "Should link to same device"
+    assert entry_old.device_id == device.id, "Should link to same device"
