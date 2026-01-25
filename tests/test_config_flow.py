@@ -91,6 +91,65 @@ async def test_form_invalid_path_not_media(hass: HomeAssistant) -> None:
     assert result2["errors"] == {CONF_BASE_PATH: "base_path_not_media"}
 
 
+async def test_form_valid_share_path(hass: HomeAssistant) -> None:
+    """Test that /share/ paths are accepted in config flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {}
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_BASE_PATH: "/share/test",
+                CONF_PATTERN: "*.jpg",
+                CONF_RETENTION_DAYS: 7,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: 100,
+                CONF_RUN_AT: "02:00",
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert result2["type"] == FlowResultType.CREATE_ENTRY, "Should accept /share/test"
+    assert result2["title"] == "test", "Title should be derived from /share/test"
+    assert result2["data"][CONF_BASE_PATH] == "/share/test"
+    assert len(mock_setup_entry.mock_calls) == 1
+
+    # Test with /share/backups
+    result3 = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.retention_cleaner.async_setup_entry",
+        return_value=True,
+    ):
+        result4 = await hass.config_entries.flow.async_configure(
+            result3["flow_id"],
+            {
+                CONF_BASE_PATH: "/share/backups",
+                CONF_PATTERN: "*.backup",
+                CONF_RETENTION_DAYS: 30,
+                CONF_DRY_RUN: False,
+                CONF_MAX_DELETES: 50,
+                CONF_RUN_AT: "03:00",
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert (
+        result4["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should accept /share/backups"
+    assert result4["title"] == "backups", "Title should be derived from /share/backups"
+    assert result4["data"][CONF_BASE_PATH] == "/share/backups"
+
+
 async def test_form_dangerous_pattern(hass: HomeAssistant) -> None:
     """Test validation error for dangerous pattern."""
     result = await hass.config_entries.flow.async_init(
@@ -386,6 +445,24 @@ async def test_validation_functions_directly() -> None:
         _validate_run_at("12:60")
 
 
+async def test_validation_share_paths_directly() -> None:
+    """Test validation functions accept /share/ paths directly."""
+    from custom_components.retention_cleaner.config_flow import _validate_base_path
+
+    assert (
+        _validate_base_path("/share/test") == "/share/test"
+    ), "Should accept /share/test"
+    assert (
+        _validate_base_path("/share/test/") == "/share/test"
+    ), "Should strip trailing slash from /share/test/"
+    assert (
+        _validate_base_path("/share/backups/camera") == "/share/backups/camera"
+    ), "Should accept nested /share/ paths"
+    assert (
+        _validate_base_path("/share/recordings") == "/share/recordings"
+    ), "Should accept /share/recordings"
+
+
 async def test_path_validation_with_os_error(hass: HomeAssistant) -> None:
     """Test path validation handles OSError/ValueError during Path.resolve()."""
     result = await hass.config_entries.flow.async_init(
@@ -615,6 +692,37 @@ async def test_options_flow_retention_days_boundary_value(
     assert result2["data"][CONF_RETENTION_DAYS] == 3650
 
 
+async def test_options_flow_share_path(hass: HomeAssistant, mock_setup_entry) -> None:
+    """Test options flow accepts /share/ path updates."""
+    mock_setup_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(mock_setup_entry.entry_id)
+
+    assert result["type"] == FlowResultType.FORM, "Should show options form"
+    assert result["step_id"] == "init"
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_BASE_PATH: "/share/recordings",
+            CONF_PATTERN: "*.mp4",
+            CONF_RETENTION_DAYS: 14,
+            CONF_DRY_RUN: False,
+            CONF_MAX_DELETES: 200,
+            CONF_RUN_AT: "04:00",
+        },
+    )
+
+    assert (
+        result2["type"] == FlowResultType.CREATE_ENTRY
+    ), "Should accept /share/recordings in options"
+    assert (
+        result2["data"][CONF_BASE_PATH] == "/share/recordings"
+    ), "Should update path to /share/recordings"
+    assert result2["data"][CONF_PATTERN] == "*.mp4", "Should update other options"
+    assert result2["data"][CONF_RETENTION_DAYS] == 14
+
+
 async def test_options_flow_error_handling(
     hass: HomeAssistant, mock_setup_entry
 ) -> None:
@@ -685,6 +793,55 @@ async def test_options_flow_error_handling(
 
     assert result5["type"] == FlowResultType.FORM
     assert result5["errors"] == {"base": "unknown"}
+
+
+async def test_symlink_validation_share_direct_symlink(caplog) -> None:
+    """Test that direct symlinks under /share/ are rejected."""
+    from pathlib import Path
+
+    from custom_components.retention_cleaner.config_flow import _validate_base_path
+
+    test_path = "/share/test_symlink"
+
+    with (
+        patch.object(Path, "is_symlink") as mock_is_symlink,
+        patch.object(Path, "resolve", return_value=Path("/share/test_symlink")),
+        caplog.at_level("WARNING"),
+    ):
+        mock_is_symlink.return_value = True
+
+        with pytest.raises(vol.Invalid, match="base_path_not_media"):
+            _validate_base_path(test_path)
+
+    assert "Symlink detected at path:" in caplog.text, "Should log symlink warning"
+    assert test_path in caplog.text, "Should include path in warning"
+
+
+async def test_symlink_validation_share_parent_symlink(caplog) -> None:
+    """Test that symlinks in parent directories under /share/ are rejected."""
+    from pathlib import Path
+
+    from custom_components.retention_cleaner.config_flow import _validate_base_path
+
+    test_path = "/share/parent/child"
+    call_count = [0]
+
+    def is_symlink_side_effect():
+        call_count[0] += 1
+        return call_count[0] != 1
+
+    with (
+        patch.object(Path, "is_symlink", side_effect=is_symlink_side_effect),
+        patch.object(Path, "resolve", return_value=Path("/share/parent/child")),
+        caplog.at_level("WARNING"),
+        pytest.raises(vol.Invalid, match="base_path_not_media"),
+    ):
+        _validate_base_path(test_path)
+
+    assert (
+        "Symlink detected in parent path:" in caplog.text
+    ), "Should log parent symlink warning"
+    assert "/share/parent" in caplog.text, "Should include parent path in warning"
 
 
 async def test_symlink_validation_direct_symlink(caplog) -> None:
@@ -846,6 +1003,22 @@ async def test_symlink_validation_path_resolves_outside_media() -> None:
     from custom_components.retention_cleaner.config_flow import _validate_base_path
 
     test_path = "/media/potentially_dangerous"
+
+    with (
+        patch.object(Path, "is_symlink", return_value=False),
+        patch.object(Path, "resolve", return_value=Path("/home/user/secret")),
+        pytest.raises(vol.Invalid, match="base_path_not_media"),
+    ):
+        _validate_base_path(test_path)
+
+
+async def test_share_path_resolves_outside_allowed() -> None:
+    """Test that /share/ paths resolving outside allowed directories are rejected."""
+    from pathlib import Path
+
+    from custom_components.retention_cleaner.config_flow import _validate_base_path
+
+    test_path = "/share/potentially_dangerous"
 
     with (
         patch.object(Path, "is_symlink", return_value=False),

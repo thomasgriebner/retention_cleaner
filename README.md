@@ -54,7 +54,7 @@ Each cleanup rule creates a device with the following configuration options:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| **Base Path** | string | - | Root directory to clean (must start with `/media/`) |
+| **Base Path** | string | - | Root directory to clean (must start with `/media/` or `/share/`) |
 | **File Pattern** | string | `**/*.jpg` | Glob pattern for matching files |
 | **Retention Days** | integer | `30` | Keep files newer than this many days (max: 3650 / 10 years) |
 | **Cleanup Time** | time | `03:15` | Daily automatic cleanup schedule (HH:MM) |
@@ -252,7 +252,7 @@ With this configuration:
 
 ### Safety Guidelines
 
-- Only `/media/` paths are allowed for security
+- Only `/media/` and `/share/` paths are allowed for security
 - Symlinks are blocked at any level to prevent path traversal attacks
 - Patterns like `*` or `**/*` are blocked to prevent accidents
 - Always test with **dry-run mode** enabled first
@@ -311,6 +311,16 @@ Dry Run: false
 Max Deletes: 1000
 ```
 
+### Recordings on Share Directory
+
+Keep 7 days of recordings on shared storage:
+
+```yaml
+Base Path: /share/recordings
+File Pattern: **/*.mp4
+Retention Days: 7
+```
+
 ### Per-Camera Cleanup
 
 Separate retention rules for different cameras:
@@ -338,6 +348,20 @@ Retention Days: 30
 Cleanup Time: 04:00
 Max Deletes: 100
 ```
+
+### Backup Management (Share Directory)
+
+Clean up old backups in shared storage:
+
+```yaml
+Base Path: /share/backups
+File Pattern: *.tar.gz
+Retention Days: 14
+Cleanup Time: 04:00
+Max Deletes: 50
+```
+
+Keeps last 14 days of backup files, deleting up to 50 old files per cleanup run.
 
 ### Selective Video Cleanup with Protection
 
@@ -411,6 +435,26 @@ The `total_folder_size_bytes` and `older_than_retention_size_bytes` sensors auto
 - How much will be freed in next cleanup
 - Storage trend graphs over time
 
+### Using Both Directories
+
+You can configure multiple instances to clean both `/media/` and `/share/` directories:
+
+**Instance 1 - Camera Recordings (Media)**
+```yaml
+Base Path: /media/frigate/recordings
+File Pattern: **/*.mp4
+Retention Days: 7
+```
+
+**Instance 2 - Backups (Share)**
+```yaml
+Base Path: /share/backups
+File Pattern: *.tar.gz
+Retention Days: 30
+```
+
+Each instance operates independently with its own retention settings.
+
 ---
 
 ## Advanced Configuration
@@ -438,7 +482,7 @@ Create multiple cleanup rules for different folders by adding the integration mu
 
 | Issue | Solution |
 |-------|----------|
-| Path not accessible | Verify path exists and starts with `/media/` |
+| Path not accessible | Verify path exists and starts with `/media/` or `/share/` |
 | No files found | Check glob pattern matches your files |
 | Files not deleting | Ensure dry-run is disabled |
 | Permission denied | Check Home Assistant user has write permissions |
@@ -455,7 +499,7 @@ For more help, check the [issue tracker](https://github.com/thomasgriebner/reten
 
 - Home Assistant 2024.1.0 or newer
 - HACS (recommended for installation)
-- Write access to `/media/` directory
+- Write access to `/media/` or `/share/` directory
 
 ---
 

@@ -32,6 +32,7 @@ from .const import (
     DOMAIN,
 )
 
+ALLOWED_BASE_PATHS = ("/media/", "/share/")
 TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 
 
@@ -86,15 +87,17 @@ def _map_validation_error_to_fields(error_key: str) -> dict[str, str]:
 
 
 def _validate_base_path(value: str) -> str:
-    """Validate base path is under /media/ and contains no symlinks.
+    """Validate base path is under /media/ or /share/ and contains no symlinks.
 
     Security: Rejects symlinks at any level to prevent TOCTOU attacks.
     """
     value = (value or "").strip()
 
-    # Basic check: must start with /media/
-    if not value.startswith("/media/"):
-        _LOGGER.warning("Invalid base path provided (not under /media/): %s", value)
+    # Basic check: must start with /media/ or /share/
+    if not any(value.startswith(path) for path in ALLOWED_BASE_PATHS):
+        _LOGGER.warning(
+            "Invalid base path provided (not under allowed paths): %s", value
+        )
         raise vol.Invalid("base_path_not_media")
 
     # Security check: resolve path to prevent traversal attacks
@@ -115,13 +118,11 @@ def _validate_base_path(value: str) -> str:
                 _LOGGER.warning("Symlink detected in parent path: %s", parent)
                 raise vol.Invalid("base_path_not_media")
 
-        # After validation, resolve and ensure still under /media/
+        # After validation, resolve and ensure still under allowed paths
         resolved_path = str(path_obj.resolve())
-        if not resolved_path.startswith("/media/"):
+        if not any(resolved_path.startswith(path) for path in ALLOWED_BASE_PATHS):
             _LOGGER.warning(
-                "Path traversal attempt: %s resolves to %s",
-                value,
-                resolved_path,
+                "Path traversal attempt: %s resolves to %s", value, resolved_path
             )
             raise vol.Invalid("base_path_not_media")
 

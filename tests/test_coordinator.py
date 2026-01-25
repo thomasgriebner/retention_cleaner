@@ -1224,6 +1224,53 @@ async def test_symlink_attack_prevention(tmp_path):
     assert media_symlink.exists()
 
 
+async def test_symlink_attack_prevention_share_path(tmp_path):
+    """Test handling of malicious symlinks in /share/ directory."""
+    import os
+
+    share_dir = tmp_path / "share" / "symlink_test"
+    share_dir.mkdir(parents=True)
+
+    sensitive_dir = tmp_path / "sensitive"
+    sensitive_dir.mkdir()
+    sensitive_file = sensitive_dir / "secret.txt"
+    sensitive_file.write_text("sensitive data")
+
+    share_symlink = share_dir / "malicious_link"
+    try:
+        os.symlink(str(sensitive_dir), str(share_symlink))
+    except OSError:
+        pytest.skip("Symlinks not supported on this platform")
+
+    regular_file = share_dir / "test.log"
+    regular_file.write_text("normal data")
+    old_time = time_module.time() - (10 * 24 * 60 * 60)
+    os.utime(regular_file, (old_time, old_time))
+
+    from custom_components.retention_cleaner.coordinator import (
+        _cleanup_folder,
+        _scan_folder,
+    )
+
+    scan_result = _scan_folder(str(share_dir), "*.log", 7)
+
+    assert scan_result.total_files == 1, "Should only count regular files under /share/"
+    assert scan_result.older_than_retention == 1, "Should count old file under /share/"
+    assert scan_result.path_available is True, "Path should be available"
+
+    cleanup_result = _cleanup_folder(str(share_dir), "*.log", 7, False, 100)
+
+    assert cleanup_result.deleted == 1, "Should delete regular file under /share/"
+    assert cleanup_result.total_after == 0, "Should have no files after cleanup"
+
+    assert sensitive_file.exists(), "Symlink should not be followed from /share/"
+    assert (
+        sensitive_file.read_text() == "sensitive data"
+    ), "Sensitive file should remain untouched"
+
+    assert share_symlink.exists(), "Symlink should not be deleted (not matched)"
+
+
 async def test_pattern_safety_comprehensive(tmp_path):
     """Test dangerous patterns with actual file structures."""
     import voluptuous as vol
