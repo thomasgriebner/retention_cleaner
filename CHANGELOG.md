@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.1.0]
 
 ### Added
+- Support for `/share/` directory alongside `/media/` as allowed base path
+  - Same security validation (symlink blocking, path traversal prevention) applies to both paths
+  - UI strings and error messages updated to mention both allowed paths
+  - German translations updated to reflect both allowed paths
 - Extension filtering for selective cleanup (closes #15)
   - `only_extensions` option: Delete only specified file extensions (e.g., `.mp4,.jpg`)
   - `except_extensions` option: Delete all files except specified extensions (e.g., `.mkv,.log`)

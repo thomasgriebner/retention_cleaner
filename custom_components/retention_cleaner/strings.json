@@ -5,7 +5,7 @@
         "title": "Retention Cleaner",
         "description": "Configure a folder cleanup rule. Choose either a file pattern OR extension filters (not both).",
         "data": {
-          "base_path": "Base path (must start with /media/)",
+          "base_path": "Base path (must start with /media/ or /share/)",
           "pattern": "File pattern (glob) - leave empty if using extension filters",
           "only_extensions": "Only delete these extensions (e.g., .mp4,.jpg) - optional",
           "except_extensions": "Never delete these extensions (e.g., .mkv,.log) - optional",
@@ -17,7 +17,7 @@
       }
     },
     "error": {
-      "base_path_not_media": "The base path must start with /media/.",
+      "base_path_not_media": "The base path must start with /media/ or /share/.",
       "run_at_invalid": "Daily run time must be in HH:MM format.",
       "pattern_too_broad": "This pattern matches ALL files! Please be more specific to avoid accidental data loss.",
       "pattern_invalid_syntax": "Invalid glob pattern syntax. Check for unclosed brackets or invalid wildcards.",
