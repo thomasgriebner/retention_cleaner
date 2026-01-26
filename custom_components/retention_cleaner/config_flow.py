@@ -321,8 +321,15 @@ def _validate_pattern_and_extensions(user_input: dict) -> dict:
     only_ext = user_input.get(CONF_ONLY_EXTENSIONS, "").strip()
     except_ext = user_input.get(CONF_EXCEPT_EXTENSIONS, "").strip()
 
-    has_pattern = bool(pattern)
     has_extensions = bool(only_ext or except_ext)
+
+    # UX Fix: Treat DEFAULT_PATTERN as empty when extensions are provided
+    # This allows extension filters to override the default pattern value
+    # without requiring users to manually clear the field
+    if has_extensions and pattern == DEFAULT_PATTERN:
+        pattern = ""
+
+    has_pattern = bool(pattern)
 
     # Rule 1: At least one must be set
     if not has_pattern and not has_extensions:

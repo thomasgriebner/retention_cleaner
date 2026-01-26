@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.1] - 2026-01-26
+
+### Fixed
+- Config flow validation error when configuring extension filters with default pattern value. Users can now set Only Extensions or Except Extensions without manually clearing the pattern field.
+
 ## [1.1.0]
 
 ### Added
@@ -143,6 +148,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Config flow for UI configuration
 - Glob pattern support
 
+[1.1.1]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.10...v1.1.0
 [1.0.10]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.8...v1.0.9

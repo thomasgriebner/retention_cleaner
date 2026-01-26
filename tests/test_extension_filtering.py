@@ -14,6 +14,7 @@ from custom_components.retention_cleaner.const import (
     CONF_PATTERN,
     CONF_RETENTION_DAYS,
     CONF_RUN_AT,
+    DEFAULT_PATTERN,
 )
 from custom_components.retention_cleaner.coordinator import (
     RetentionCleanerCoordinator,
@@ -324,6 +325,48 @@ class TestConfigFlowMutualExclusion:
             result["type"] == FlowResultType.CREATE_ENTRY
         ), "Should allow empty pattern in extension mode"
         assert result["data"][CONF_PATTERN] == "", "Pattern should be empty"
+
+    @pytest.mark.parametrize(
+        "extension_field,extension_value",
+        [
+            (CONF_ONLY_EXTENSIONS, ".mp4,.mkv"),
+            (CONF_EXCEPT_EXTENSIONS, ".log,.tmp"),
+        ],
+    )
+    async def test_default_pattern_with_extensions_should_succeed(
+        self,
+        hass: HomeAssistant,
+        extension_config_flow,
+        extension_field,
+        extension_value,
+    ) -> None:
+        """Test that DEFAULT_PATTERN is overridden when extensions are provided.
+
+        Bug: Users get 'cannot_combine_pattern_and_extensions' error when they
+        set extension filters with the default pattern value. The default should
+        be treated as 'not set' to allow extension filters to work.
+        """
+        result = await extension_config_flow(
+            {
+                CONF_BASE_PATH: TEST_MEDIA_PATH,
+                CONF_PATTERN: DEFAULT_PATTERN,
+                extension_field: extension_value,
+                CONF_RETENTION_DAYS: TEST_RETENTION_DAYS,
+                CONF_DRY_RUN: True,
+                CONF_MAX_DELETES: TEST_MAX_DELETES,
+                CONF_RUN_AT: TEST_RUN_AT,
+            }
+        )
+
+        assert (
+            result["type"] == FlowResultType.CREATE_ENTRY
+        ), f"Should allow extensions to override DEFAULT_PATTERN (got error: {result.get('errors', {})})"
+        assert (
+            result["data"][CONF_PATTERN] == ""
+        ), "Pattern should be empty when extensions used"
+        assert (
+            result["data"][extension_field] == extension_value
+        ), f"Extension filter should be set to {extension_value}"
 
 
 class TestOptionsFlowExtensions:
