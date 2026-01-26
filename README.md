@@ -9,6 +9,14 @@ Automatically clean up old files in Home Assistant based on configurable retenti
 
 > **⚠️ Important:** This integration permanently deletes files. Always test with dry-run mode first and verify your configuration before enabling automated cleanup.
 
+## Why this Integration?
+
+Managing disk space on Home Assistant usually means SSH access, cron jobs, and custom shell scripts. If your camera recordings are filling up your storage, you'd typically write a bash script, schedule it with cron, and hope it doesn't accidentally delete the wrong files. There's no visibility in Home Assistant, no way to test safely, and troubleshooting means digging through system logs.
+
+Configure cleanup rules directly in the Home Assistant UI with no shell access required. Test your configuration safely with dry-run mode and see exactly what will be deleted before committing. Monitor storage usage, track cleanup history, and get real-time alerts when paths become inaccessible - all from your Home Assistant dashboard.
+
+Your Frigate camera fills up `/media/` with recordings. Instead of SSHing in and writing a bash script to delete old files, just add this integration, set your retention days, enable dry-run mode to verify, and let Home Assistant handle it automatically. You'll see sensor updates showing how much storage was freed and can even set up automations based on file counts or folder sizes.
+
 ---
 
 ## Features
