@@ -14,7 +14,15 @@ _LOGGER = logging.getLogger(__name__)
 # This integration is configured via config entries only (no YAML config).
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor", "button"]
+PLATFORMS: list[str] = [
+    "sensor",
+    "binary_sensor",
+    "button",
+    "number",
+    "text",
+    "time",
+    "switch",
+]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:

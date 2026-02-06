@@ -608,3 +608,38 @@ async def test_logs_at_debug_level(
         assert has_removal_log, "Should log directory removal at DEBUG level"
     finally:
         await coordinator.async_shutdown()
+
+
+async def test_remove_empty_folders_property_test_override(
+    hass: HomeAssistant, mock_remove_empty_config, tmp_path
+):
+    """Test that _test_remove_empty_folders override works correctly.
+
+    This covers the defensive code path in remove_empty_folders property
+    that checks for a test override attribute before checking the config.
+    """
+    media_dir = tmp_path / "media"
+    media_dir.mkdir(parents=True)
+    empty_dir = media_dir / "empty_folder"
+    empty_dir.mkdir()
+
+    entry = mock_remove_empty_config(
+        base_path=str(media_dir), remove_empty=False, dry_run=False
+    )
+    coordinator = RetentionCleanerCoordinator(hass, entry)
+
+    try:
+        assert not coordinator.remove_empty_folders, "Config should disable feature"
+
+        coordinator._test_remove_empty_folders = True
+        assert coordinator.remove_empty_folders, "Test override should enable feature"
+
+        coordinator._test_remove_empty_folders = False
+        assert (
+            not coordinator.remove_empty_folders
+        ), "Test override should disable feature"
+
+        delattr(coordinator, "_test_remove_empty_folders")
+        assert not coordinator.remove_empty_folders, "Should fall back to config"
+    finally:
+        await coordinator.async_shutdown()

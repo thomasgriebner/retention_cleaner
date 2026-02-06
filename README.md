@@ -22,6 +22,7 @@ Your Frigate camera fills up `/media/` with recordings. Instead of SSHing in and
 ## Features
 
 - **Rule-Based Cleanup** - Each device represents one folder with its own retention policy
+- **Runtime Configuration** - Change retention days, patterns, and schedules via UI without restarting (v1.2.0+)
 - **Automated Scheduling** - Daily cleanup runs at your specified time
 - **Safety First** - Dry-run mode, delete limits, and path restrictions protect against accidents
 - **Performance Tracking** - Monitor scan/cleanup duration and deleted file sizes
@@ -58,21 +59,188 @@ Your Frigate camera fills up `/media/` with recordings. Instead of SSHing in and
 
 ## Configuration
 
-Each cleanup rule creates a device with the following configuration options:
+Each cleanup rule creates a device with the following configuration options. **New in v1.2.0:** Most configuration parameters can now be changed at runtime through dedicated config entities without restarting Home Assistant.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| **Base Path** | string | - | Root directory to clean (must start with `/media/` or `/share/`) |
-| **File Pattern** | string | `**/*.jpg` | Glob pattern for matching files |
-| **Retention Days** | integer | `30` | Keep files newer than this many days (max: 3650 / 10 years) |
-| **Cleanup Time** | time | `03:15` | Daily automatic cleanup schedule (HH:MM) |
-| **Dry Run** | boolean | `false` | Test mode - count files without deleting |
-| **Max Deletes** | integer | `5000` | Safety limit per cleanup run |
-| **Only Extensions** | string | - | Keep only files with these extensions (e.g., `.mp4,.avi`) - case-insensitive |
-| **Except Extensions** | string | - | Delete all files except these extensions (e.g., `.log,.tmp`) - case-insensitive |
-| **Keep Minimum Files** | integer | `0` | Always preserve this many newest files (0-10,000), regardless of retention |
-| **Max Files In Folder** | integer | `0` | Cap total number of files in folder (0-1,000,000), enforced after time-based cleanup (0 = disabled) |
-| **Remove Empty Folders** | boolean | `false` | Remove empty subdirectories after file deletion (opt-in for safety) |
+| Parameter | Type | Default | Editable | Description |
+|-----------|------|---------|----------|-------------|
+| **Base Path** | string | - | No (Setup only) | Root directory to clean (must start with `/media/` or `/share/`) |
+| **File Pattern** | string | `**/*.jpg` | **Yes** (Text entity) | Glob pattern for matching files |
+| **Retention Days** | integer | `30` | **Yes** (Number entity) | Keep files newer than this many days (1-3650) |
+| **Cleanup Time** | time | `03:15` | **Yes** (Time entity) | Daily automatic cleanup schedule (HH:MM) |
+| **Dry Run** | boolean | `false` | **Yes** (Switch entity) | Test mode - count files without deleting |
+| **Max Deletes** | integer | `5000` | **Yes** (Number entity) | Safety limit per cleanup run (1-10,000) |
+| **Only Extensions** | string | - | **Yes** (Text entity) | Keep only files with these extensions (e.g., `.mp4,.avi`) - case-insensitive |
+| **Except Extensions** | string | - | **Yes** (Text entity) | Delete all files except these extensions (e.g., `.log,.tmp`) - case-insensitive |
+| **Keep Minimum Files** | integer | `0` | **Yes** (Number entity) | Always preserve this many newest files (0-10,000), regardless of retention |
+| **Max Files In Folder** | integer | `0` | **Yes** (Number entity) | Cap total number of files in folder (0-1,000,000), enforced after time-based cleanup (0 = disabled) |
+| **Remove Empty Folders** | boolean | `false` | **Yes** (Switch entity) | Remove empty subdirectories after file deletion (opt-in for safety) |
+
+### Configuration Entities (Runtime Configuration)
+
+**New in v1.2.0:** Change key configuration parameters at runtime through the Home Assistant UI without restarting. These entities appear automatically for each cleanup rule under the device.
+
+#### Why Configuration Entities?
+
+Previously, changing configuration required using the options flow dialog. Now you can:
+- **Change settings instantly** via the UI - no dialog navigation required
+- **Automate configuration** - trigger config changes from automations
+- **Test retention periods** - quickly adjust retention days to preview cleanup impact
+- **Schedule cleanup times** - change daily cleanup schedule without reconfiguration
+- **Enable/disable features** - toggle dry-run mode or empty folder removal with a switch
+
+**Config Entities vs Options Flow:**
+- **Config entities** are for frequently changed values (retention days, pattern, cleanup time, dry-run mode)
+- **Options flow** remains for initial setup and device configuration
+- Changes via config entities are immediate and trigger automatic updates
+- All config entities are atomic and immediately persisted to storage
+
+#### Available Configuration Entities (9 Total)
+
+**Number Entities (4):**
+
+| Entity | Range | Default | Behavior on Change | Description |
+|--------|-------|---------|-------------------|-------------|
+| **Retention days** | 1-3650 days | 30 | Triggers immediate scan | How many days to keep files before deletion |
+| **Max deletes** | 1-10,000 files | 5000 | No scan triggered | Safety limit per cleanup run |
+| **Keep minimum files** | 0-10,000 files | 0 | No scan triggered | Always preserve this many newest files |
+| **Max files in folder** | 0-1,000,000 files | 0 | No scan triggered | Cap total files (0 = disabled) |
+
+**Switch Entities (2):**
+
+| Entity | Default | Behavior on Change | Description |
+|--------|---------|-------------------|-------------|
+| **Dry run** | Off | No scan triggered | Toggle simulation mode (migrated from Select in v1.2.0) |
+| **Remove empty folders** | Off | No scan triggered | Auto-remove empty directories after cleanup |
+
+**Text Entities (3):**
+
+| Entity | Default | Behavior on Change | Description |
+|--------|---------|-------------------|-------------|
+| **Pattern** | `**/*.jpg` | Triggers immediate scan | File matching pattern with validation |
+| **Only extensions** | Empty | Triggers immediate scan | Comma-separated include list (e.g., `.mp4,.jpg`) |
+| **Except extensions** | Empty | Triggers immediate scan | Comma-separated exclude list (e.g., `.tmp,.log`) |
+
+**Time Entity (1):**
+
+| Entity | Default | Behavior on Change | Description |
+|--------|---------|-------------------|-------------|
+| **Run at** | 03:15 | Reschedules next cleanup | Daily automatic cleanup time (HH:MM) |
+
+**Sensor (1):**
+
+| Entity | Category | Description |
+|--------|----------|-------------|
+| **Base Path** | Diagnostic | Read-only display of configured base path |
+
+#### Validation and Safety
+
+**Pattern Validation:**
+- Dangerous patterns like `*` or `**/*` are rejected
+- Prevents accidental deletion of all files
+- Invalid syntax (e.g., `***`) is blocked
+
+**Extension Validation:**
+- Extensions must start with dot (e.g., `.mp4` not `mp4`)
+- No wildcards allowed in extensions
+- Must have at least one character after dot
+
+**Mutual Exclusion:**
+- Cannot use custom pattern with extension filters simultaneously
+- Cannot set both `only_extensions` and `except_extensions`
+- UI validates before saving changes
+
+#### Usage Examples
+
+**Change Retention Period via UI:**
+```yaml
+# Navigate to device page, find "Retention days" number entity
+# Adjust slider from 30 to 14 days
+# Scan triggers automatically to show new file counts
+```
+
+**Automate Retention Adjustment:**
+```yaml
+automation:
+  - alias: "Reduce retention when disk space low"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.disk_use_percent
+        above: 85
+    action:
+      - service: number.set_value
+        target:
+          entity_id: number.front_camera_retention_days
+        data:
+          value: 7  # Temporarily reduce to 7 days
+```
+
+**Toggle Dry-Run for Testing:**
+```yaml
+# Before testing new pattern, enable dry-run
+# Navigate to device page, find "Dry run" switch entity
+# Toggle switch to "On"
+# Run cleanup button to see what would be deleted
+# Toggle switch to "Off" when ready
+```
+
+**Automate Dry-Run Toggle:**
+```yaml
+automation:
+  - alias: "Enable dry-run during work hours"
+    trigger:
+      - platform: time
+        at: "09:00:00"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.front_camera_dry_run
+  - alias: "Disable dry-run at night"
+    trigger:
+      - platform: time
+        at: "22:00:00"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.front_camera_dry_run
+```
+
+**Change Daily Cleanup Time:**
+```yaml
+automation:
+  - alias: "Switch cleanup time for winter"
+    trigger:
+      - platform: time
+        at: "00:00:00"
+    condition:
+      - condition: template
+        value_template: "{{ now().month in [11, 12, 1, 2] }}"  # Winter months
+    action:
+      - service: time.set_value
+        target:
+          entity_id: time.front_camera_run_at
+        data:
+          time: "04:00:00"  # Later cleanup in winter
+```
+
+#### Technical Implementation
+
+**ConfigSnapshot Pattern:**
+Configuration changes are handled through immutable snapshots during operations:
+- Scan/cleanup operations use snapshot of config at start time
+- Prevents race conditions when config changes mid-operation
+- Changes take effect on next operation (scan/cleanup)
+
+**Atomic Updates:**
+All configuration changes are atomic and immediately persisted:
+1. Entity value changes via UI or service call
+2. Validation runs (syntax, cross-field rules)
+3. Config entry updated (persisted to storage)
+4. Coordinator refreshes (entities update)
+5. Scheduler updates (if time entity changed)
+
+**Order of Operations:**
+1. Number/Text/Time entity change → Triggers coordinator refresh → Triggers automatic scan
+2. Select entity (dry-run) change → Updates config only (no scan needed)
 
 ### Pattern Examples
 
@@ -274,20 +442,38 @@ With this configuration:
 
 Each cleanup rule provides these entities:
 
+### Configuration Entities (New in v1.2.0)
+
+| Entity | Type | Category | Description |
+|--------|------|----------|-------------|
+| **Retention days** | Number | CONFIG | Editable retention period (1-3650 days), triggers scan on change |
+| **Max deletes** | Number | CONFIG | Editable safety limit (1-10,000 files) per cleanup run |
+| **Keep minimum files** | Number | CONFIG | Editable minimum files to preserve (0-10,000) |
+| **Max files in folder** | Number | CONFIG | Editable maximum total files (0-1,000,000, 0 = disabled) |
+| **Dry run** | Switch | CONFIG | Toggle simulation mode (on/off), migrated from Select in v1.2.0 |
+| **Remove empty folders** | Switch | CONFIG | Toggle empty directory removal (on/off) |
+| **Pattern** | Text | CONFIG | Editable glob pattern, triggers scan on change |
+| **Only extensions** | Text | CONFIG | Include filter for extensions, triggers scan on change |
+| **Except extensions** | Text | CONFIG | Exclude filter for extensions, triggers scan on change |
+| **Run at** | Time | CONFIG | Editable daily cleanup time (HH:MM), reschedules on change |
+| **Base Path** | Sensor | DIAGNOSTIC | Read-only display of configured path |
+
+See [Configuration Entities](#configuration-entities-runtime-configuration) section for detailed usage.
+
 ### Sensors
 
-| Entity | Description | Unit |
-|--------|-------------|------|
-| **Total files** | Current file count | files |
-| **Older than retention** | Files eligible for deletion | files |
-| **Deleted last cleanup** | Files deleted in last run | files |
-| **Deleted bytes last cleanup** | Size of deleted files | bytes |
-| **Total folder size bytes** | Total size of all matched files | bytes |
-| **Older than retention size bytes** | Size of files eligible for deletion | bytes |
-| **Last scan** | Timestamp of last scan | - |
-| **Last cleanup** | Timestamp of last cleanup | - |
-| **Last scan duration** | Performance metric | ms |
-| **Last cleanup duration** | Performance metric | ms |
+| Entity | Description | Unit | Category |
+|--------|-------------|------|----------|
+| **Total files** | Current file count | files | - |
+| **Older than retention** | Files eligible for deletion | files | - |
+| **Deleted last cleanup** | Files deleted in last run | files | - |
+| **Deleted bytes last cleanup** | Size of deleted files | bytes | - |
+| **Total folder size bytes** | Total size of all matched files | bytes | - |
+| **Older than retention size bytes** | Size of files eligible for deletion | bytes | - |
+| **Last scan** | Timestamp of last scan | - | DIAGNOSTIC |
+| **Last cleanup** | Timestamp of last cleanup | - | DIAGNOSTIC |
+| **Last scan duration** | Performance metric | ms | DIAGNOSTIC |
+| **Last cleanup duration** | Performance metric | ms | DIAGNOSTIC |
 
 ### Binary Sensor
 
@@ -498,6 +684,8 @@ Create multiple cleanup rules for different folders by adding the integration mu
 | Extension filter not working | Ensure no File Pattern is set (use default `**/*.jpg` or leave empty) |
 | Still has old files | Check if Keep Minimum Files is protecting them |
 | Cannot set both extension filters | Use only `only_extensions` OR `except_extensions`, not both |
+| Missing sensor attributes (v1.2.0+) | Configuration values moved to dedicated config entities (see device page) |
+| Config changes not taking effect | Changes trigger automatic scan; check entity update time and scan sensor |
 
 For more help, check the [issue tracker](https://github.com/thomasgriebner/retention_cleaner/issues).
 

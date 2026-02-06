@@ -20,12 +20,24 @@ from .const import DOMAIN
 from .coordinator import RetentionCleanerCoordinator
 
 SENSOR_DEFS = [
-    ("total_files", "Total files", "files", "mdi:file-multiple", None, None, None),
+    (
+        "total_files",
+        "Total files",
+        "files",
+        "mdi:file-multiple",
+        None,
+        None,
+        None,
+        None,
+        None,
+    ),
     (
         "older_than_retention",
         "Older than retention",
         "files",
         "mdi:file-clock-outline",
+        None,
+        None,
         None,
         None,
         None,
@@ -38,33 +50,41 @@ SENSOR_DEFS = [
         None,
         None,
         None,
+        None,
+        None,
     ),
     (
         "deleted_bytes_last_run",
-        "Deleted bytes last cleanup",
+        "Deleted size last cleanup",
         UnitOfInformation.BYTES,
         "mdi:delete-circle-outline",
         None,
         SensorDeviceClass.DATA_SIZE,
         SensorStateClass.MEASUREMENT,
+        UnitOfInformation.MEGABYTES,
+        2,
     ),
     (
         "total_folder_size_bytes",
-        "Total Folder Size Bytes",
+        "Total folder size",
         UnitOfInformation.BYTES,
         "mdi:folder-multiple",
         None,
         SensorDeviceClass.DATA_SIZE,
         SensorStateClass.MEASUREMENT,
+        UnitOfInformation.MEGABYTES,
+        2,
     ),
     (
         "older_than_retention_size_bytes",
-        "Older Than Retention Size Bytes",
+        "Older than retention size",
         UnitOfInformation.BYTES,
         "mdi:delete-clock",
         None,
         SensorDeviceClass.DATA_SIZE,
         SensorStateClass.MEASUREMENT,
+        UnitOfInformation.MEGABYTES,
+        2,
     ),
     (
         "last_scan",
@@ -73,6 +93,8 @@ SENSOR_DEFS = [
         "mdi:folder-search",
         EntityCategory.DIAGNOSTIC,
         SensorDeviceClass.TIMESTAMP,
+        None,
+        None,
         None,
     ),
     (
@@ -83,6 +105,8 @@ SENSOR_DEFS = [
         EntityCategory.DIAGNOSTIC,
         SensorDeviceClass.TIMESTAMP,
         None,
+        None,
+        None,
     ),
     (
         "last_scan_duration_ms",
@@ -92,6 +116,8 @@ SENSOR_DEFS = [
         EntityCategory.DIAGNOSTIC,
         SensorDeviceClass.DURATION,
         SensorStateClass.MEASUREMENT,
+        None,
+        None,
     ),
     (
         "last_cleanup_duration_ms",
@@ -101,6 +127,19 @@ SENSOR_DEFS = [
         EntityCategory.DIAGNOSTIC,
         SensorDeviceClass.DURATION,
         SensorStateClass.MEASUREMENT,
+        None,
+        None,
+    ),
+    (
+        "base_path",
+        "Base Path",
+        None,
+        "mdi:folder",
+        EntityCategory.DIAGNOSTIC,
+        None,
+        None,
+        None,
+        None,
     ),
 ]
 
@@ -123,8 +162,10 @@ async def async_setup_entry(
                 category,
                 device_class,
                 state_class,
+                suggested_unit,
+                suggested_precision,
             )
-            for key, name, unit, icon, category, device_class, state_class in SENSOR_DEFS
+            for key, name, unit, icon, category, device_class, state_class, suggested_unit, suggested_precision in SENSOR_DEFS
         ]
     )
 
@@ -143,6 +184,8 @@ class RetentionCleanerSensor(
         category: EntityCategory | None = None,
         device_class: SensorDeviceClass | None = None,
         state_class: SensorStateClass | None = None,
+        suggested_unit: str | None = None,
+        suggested_precision: int | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._key = key
@@ -163,6 +206,12 @@ class RetentionCleanerSensor(
 
         if state_class:
             self._attr_state_class = state_class
+
+        if suggested_unit:
+            self._attr_suggested_unit_of_measurement = suggested_unit
+
+        if suggested_precision is not None:
+            self._attr_suggested_display_precision = suggested_precision
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -190,6 +239,10 @@ class RetentionCleanerSensor(
     @property
     def native_value(self) -> Any:
         """Return the current value or restored value."""
+        # Special handling for base_path sensor - get from coordinator.base_path
+        if self._key == "base_path":
+            return self.coordinator.base_path
+
         current_value = (self.coordinator.data or {}).get(self._key)
 
         if current_value is not None:
@@ -241,18 +294,5 @@ class RetentionCleanerSensor(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        d = self.coordinator.data or {}
-        current_attrs = {
-            "base_path": d.get("base_path"),
-            "pattern": d.get("pattern"),
-            "retention_days": d.get("retention_days"),
-        }
-
-        # Use restored attributes as fallback when no current data
-        restored_attrs = getattr(self, "_restored_attributes", {})
-        if not d and restored_attrs:
-            for key in ["base_path", "pattern", "retention_days"]:
-                if key not in current_attrs or current_attrs[key] is None:
-                    current_attrs[key] = restored_attrs.get(key)
-
-        return current_attrs
+        """Return empty dict - config values are now proper CONFIG entities."""
+        return {}

@@ -52,6 +52,16 @@ TEST_FILE_SIZE_SMALL = 1024  # 1 KB
 TEST_FILE_SIZE_MEDIUM = 102400  # 100 KB
 TEST_FILE_SIZE_LARGE = 1048576  # 1 MB
 
+# Text entity test constants
+TEST_VALID_PATTERN = "**/*.jpg"
+TEST_VALID_EXTENSIONS_ONLY = ".mp4,.jpg"
+TEST_VALID_EXTENSIONS_EXCEPT = ".tmp,.log"
+TEST_DANGEROUS_PATTERN_STAR = "*"
+TEST_DANGEROUS_PATTERN_ALL = "**/*"
+TEST_EXTENSION_NO_DOT = "mp4"
+TEST_EXTENSION_WITH_WILDCARD = ".mp*"
+TEST_EXTENSION_WITH_PATH = "./../mp4"
+
 
 def pytest_configure(config):
     """Configure pytest - ensures custom_components is in sys.path early."""
@@ -144,6 +154,9 @@ def mock_setup_entry():
             "dry_run": True,
             "max_deletes": 100,
             "run_at": "02:00",
+            "keep_minimum_files": TEST_KEEP_MINIMUM_FILES,
+            "max_files_in_folder": TEST_MAX_FILES_IN_FOLDER,
+            "remove_empty_folders": TEST_REMOVE_EMPTY_FOLDERS,
         },
         entry_id="test_entry_123",
     )
