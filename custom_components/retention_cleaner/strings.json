@@ -32,5 +32,50 @@
       "cannot_use_both_only_and_except": "Cannot use both 'only extensions' and 'except extensions' filters.",
       "unknown": "Invalid configuration."
     }
+  },
+  "entity": {
+    "number": {
+      "retention_days": {
+        "name": "Retention Days"
+      },
+      "max_deletes": {
+        "name": "Max Deletes"
+      },
+      "keep_minimum_files": {
+        "name": "Keep Minimum Files"
+      },
+      "max_files_in_folder": {
+        "name": "Max Files in Folder"
+      }
+    },
+    "text": {
+      "pattern": {
+        "name": "File Pattern"
+      },
+      "only_extensions": {
+        "name": "Only Extensions"
+      },
+      "except_extensions": {
+        "name": "Except Extensions"
+      }
+    },
+    "time": {
+      "run_at": {
+        "name": "Daily Cleanup Time"
+      }
+    },
+    "switch": {
+      "dry_run": {
+        "name": "Dry Run Mode"
+      },
+      "remove_empty_folders": {
+        "name": "Remove Empty Folders"
+      }
+    },
+    "sensor": {
+      "base_path": {
+        "name": "Base Path"
+      }
+    }
   }
 }

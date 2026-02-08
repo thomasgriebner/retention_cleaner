@@ -323,15 +323,18 @@ async def test_options_flow(hass: HomeAssistant, mock_setup_entry) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "init"
 
-    # Update options
+    # Update options (includes all fields to set explicit values)
     result2 = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
-            CONF_BASE_PATH: "/media/test",  # Must include base_path since it's required
+            CONF_BASE_PATH: "/media/test",
             CONF_PATTERN: "*.log",
             CONF_RETENTION_DAYS: 14,
             CONF_DRY_RUN: False,
             CONF_MAX_DELETES: 200,
+            CONF_KEEP_MINIMUM_FILES: 0,
+            CONF_MAX_FILES_IN_FOLDER: 0,
+            CONF_REMOVE_EMPTY_FOLDERS: False,
             CONF_RUN_AT: "03:00",
         },
     )

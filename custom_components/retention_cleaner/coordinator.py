@@ -81,6 +81,42 @@ class CleanupResult:
     deleted_bytes: int = 0
 
 
+@dataclass(frozen=True)
+class ConfigSnapshot:
+    """Immutable snapshot of coordinator configuration at a point in time.
+
+    This frozen dataclass ensures that configuration values used during
+    a cleanup or scan operation remain consistent throughout the entire
+    operation, even if the configuration is updated via config entities
+    while the operation is in progress.
+
+    Attributes:
+        base_path: Absolute path to the monitored folder.
+        pattern: Glob pattern for matching files (e.g., "*.jpg").
+        retention_days: Number of days to retain files.
+        dry_run: If True, simulate operations without making changes.
+        max_deletes: Maximum number of files to delete in one run.
+        run_at: Time string for daily scheduled cleanup (HH:MM format).
+        only_extensions: Comma-separated list of extensions to exclusively process.
+        except_extensions: Comma-separated list of extensions to exclude.
+        keep_minimum_files: Minimum number of newest files to always preserve.
+        max_files_in_folder: Maximum number of files to keep (0 = disabled).
+        remove_empty_folders: If True, remove empty directories after cleanup.
+    """
+
+    base_path: str
+    pattern: str
+    retention_days: int
+    dry_run: bool
+    max_deletes: int
+    run_at: str
+    only_extensions: str
+    except_extensions: str
+    keep_minimum_files: int
+    max_files_in_folder: int
+    remove_empty_folders: bool
+
+
 def _now() -> datetime:
     """Generate current timestamp with UTC timezone.
 
@@ -952,7 +988,25 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             bool: True if deletions should be simulated only.
         """
+        # Check for test override first (allows direct assignment in tests)
+        if hasattr(self, "_test_dry_run"):
+            return self._test_dry_run
+
+        # Check for cached dry_run value (set by async_update_config_value)
+        # This ensures immediate availability after config updates
+        if hasattr(self, "_cached_dry_run"):
+            return self._cached_dry_run
+
         return bool(self.cfg.get(CONF_DRY_RUN, False))
+
+    @dry_run.setter
+    def dry_run(self, value: bool) -> None:
+        """Set dry-run mode (for testing purposes only).
+
+        Args:
+            value: True to enable dry-run mode, False to disable.
+        """
+        self._test_dry_run = value
 
     @property
     def max_deletes(self) -> int:
@@ -988,9 +1042,22 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             bool: True if empty directories should be removed after cleanup.
         """
+        # Check for test override first (allows direct assignment in tests)
+        if hasattr(self, "_test_remove_empty_folders"):
+            return self._test_remove_empty_folders
+
         return bool(
             self.cfg.get(CONF_REMOVE_EMPTY_FOLDERS, DEFAULT_REMOVE_EMPTY_FOLDERS)
         )
+
+    @remove_empty_folders.setter
+    def remove_empty_folders(self, value: bool) -> None:
+        """Set remove empty folders mode (for testing purposes only).
+
+        Args:
+            value: True to enable empty folder removal, False to disable.
+        """
+        self._test_remove_empty_folders = value
 
     @property
     def run_at(self) -> dt_time:
@@ -1000,6 +1067,32 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             dt_time: Time of day for scheduled cleanup.
         """
         return _parse_run_at(self.cfg.get(CONF_RUN_AT, "03:15"))
+
+    def create_config_snapshot(self) -> ConfigSnapshot:
+        """Create an immutable snapshot of the current configuration.
+
+        Returns:
+            ConfigSnapshot: Frozen dataclass containing all config values
+                          at the moment this method is called.
+
+        Note:
+            This snapshot should be created at the start of cleanup/scan
+            operations to ensure consistent configuration throughout the
+            operation, even if config entities modify values during execution.
+        """
+        return ConfigSnapshot(
+            base_path=self.base_path,
+            pattern=self.pattern,
+            retention_days=self.retention_days,
+            dry_run=self.dry_run,
+            max_deletes=self.max_deletes,
+            run_at=self.cfg.get(CONF_RUN_AT, "03:15"),
+            only_extensions=self.only_extensions,
+            except_extensions=self.except_extensions,
+            keep_minimum_files=self.keep_minimum_files,
+            max_files_in_folder=self.max_files_in_folder,
+            remove_empty_folders=self.remove_empty_folders,
+        )
 
     async def async_setup_daily_schedule(self) -> None:
         """Schedule the daily cleanup run based on config.
@@ -1033,6 +1126,58 @@ class RetentionCleanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             minute=t.minute,
             second=0,
         )
+
+    async def async_update_config_value(self, key: str, value: Any) -> None:
+        """Update a configuration value and persist it to entry.options.
+
+        This method updates the configuration entry's options dictionary
+        with the new value, persists it to storage via Home Assistant's
+        config_entries.async_update_entry, and triggers a coordinator
+        refresh to apply the new configuration.
+
+        Special handling:
+            - When CONF_RUN_AT is updated, async_setup_daily_schedule is
+              called to reschedule the daily cleanup with the new time.
+
+        Args:
+            key: Configuration key (e.g., CONF_RETENTION_DAYS).
+            value: New value to set for the configuration key.
+
+        Example:
+            await coordinator.async_update_config_value(CONF_RETENTION_DAYS, 14)
+            await coordinator.async_update_config_value(CONF_RUN_AT, "04:30")
+        """
+        new_options = {**self.entry.options, key: value}
+
+        # Cache the new value for immediate availability (especially for dry_run)
+        # This works around timing issues with entry.options property updates
+        if key == CONF_DRY_RUN:
+            self._cached_dry_run = value
+            # Clear test override
+            if hasattr(self, "_test_dry_run"):
+                delattr(self, "_test_dry_run")
+        elif key == CONF_REMOVE_EMPTY_FOLDERS:
+            # Clear test override for remove_empty_folders
+            if hasattr(self, "_test_remove_empty_folders"):
+                delattr(self, "_test_remove_empty_folders")
+
+        self.hass.config_entries.async_update_entry(
+            self.entry,
+            options=new_options,
+        )
+
+        if key == CONF_RUN_AT:
+            await self.async_setup_daily_schedule()
+
+        # Dry-run and remove_empty_folders changes don't require a file system scan, just notify entities
+        # Other config changes (retention_days, pattern, etc.) need a rescan
+        if key in (CONF_DRY_RUN, CONF_REMOVE_EMPTY_FOLDERS):
+            # Manually notify all coordinator entities to update their state
+            self.async_update_listeners()
+        else:
+            # Request refresh and wait for it to complete
+            # This ensures entities read the updated config values
+            await self.async_request_refresh()
 
     def async_remove_listeners(self) -> None:
         """Remove scheduler listeners (called on unload).

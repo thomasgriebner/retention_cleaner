@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.0] - 2026-02-03
+
+### Added
+- Runtime configuration entities for editing settings without restarting Home Assistant
+  - **Number entities**: `retention_days`, `max_deletes`, `keep_minimum_files`, `max_files_in_folder`
+  - **Switch entities**: `dry_run`, `remove_empty_folders`
+  - **Text entities**: `pattern`, `only_extensions`, `except_extensions` (with input validation)
+  - **Time entity**: `run_at` for changing daily cleanup schedule
+  - **Sensor**: `base_path` (read-only, diagnostic)
+  - Changes to number, text, and time entities trigger immediate scan to update file counts
+  - Switch entity changes apply immediately without triggering scan
+
+### Changed
+- `dry_run` migrated from Select entity to Switch entity for better user experience
+- Configuration values moved from sensor attributes to dedicated config entities
+- Deleted bytes sensors now display in MB with 2 decimal places
+
+### Fixed
+- Number configuration entities now return integer values instead of float, preventing decimal separators (commas) in localized Home Assistant UIs
+
+### Breaking Changes
+- **Removed sensor attributes**: `base_path`, `pattern`, and `retention_days` no longer available as sensor extra_state_attributes
+  - Migration: Use the new config entities instead (automatically created for all instances)
+  - Existing automations or templates reading sensor attributes must be updated to use new entity IDs
+
 ## [1.1.1] - 2026-01-26
 
 ### Fixed
@@ -148,6 +173,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Config flow for UI configuration
 - Glob pattern support
 
+[1.2.0]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.10...v1.1.0
 [1.0.10]: https://github.com/thomasgriebner/retention_cleaner/compare/v1.0.9...v1.0.10

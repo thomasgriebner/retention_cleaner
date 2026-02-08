@@ -31,6 +31,28 @@ async def test_coordinator_setup(hass: HomeAssistant, mock_setup_entry):
         await coordinator.async_shutdown()
 
 
+async def test_coordinator_dry_run_test_override(hass: HomeAssistant, mock_setup_entry):
+    """Test _test_dry_run override is returned when set."""
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        assert coordinator.dry_run is True, "Should use config value initially"
+
+        coordinator._test_dry_run = False
+
+        assert coordinator.dry_run is False, "Should return test override value"
+        assert hasattr(
+            coordinator, "_test_dry_run"
+        ), "Test override attribute should exist"
+
+        delattr(coordinator, "_test_dry_run")
+        assert (
+            coordinator.dry_run is True
+        ), "Should return to config value after cleanup"
+    finally:
+        await coordinator.async_shutdown()
+
+
 async def test_coordinator_scan_with_real_files(
     hass: HomeAssistant, mock_setup_entry, tmp_path
 ):
@@ -3099,3 +3121,367 @@ def test_scan_folder_keep_minimum_not_applied(tmp_path):
     assert result.total_files == 10, "Scan should count all files"
     assert result.older_than_retention == 10, "Scan should count all old files"
     assert result.path_available is True, "Path should be available"
+
+
+# ============================================================================
+# Phase 1: ConfigSnapshot and async_update_config_value Tests
+# ============================================================================
+
+
+async def test_config_snapshot_immutable(hass: HomeAssistant, mock_setup_entry):
+    """Test that ConfigSnapshot is a frozen dataclass (immutable)."""
+    from custom_components.retention_cleaner.coordinator import (
+        ConfigSnapshot,
+        RetentionCleanerCoordinator,
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        snapshot = ConfigSnapshot(
+            base_path="/media/test",
+            pattern="*.jpg",
+            retention_days=7,
+            dry_run=True,
+            max_deletes=100,
+            run_at="02:00",
+            only_extensions="",
+            except_extensions="",
+            keep_minimum_files=0,
+            max_files_in_folder=0,
+            remove_empty_folders=False,
+        )
+
+        assert snapshot.base_path == "/media/test", "Should store base_path correctly"
+        assert snapshot.retention_days == 7, "Should store retention_days correctly"
+
+        with pytest.raises((AttributeError, Exception)):
+            snapshot.retention_days = 14
+
+        with pytest.raises((AttributeError, Exception)):
+            snapshot.dry_run = False
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_config_snapshot_during_cleanup(
+    hass: HomeAssistant, mock_setup_entry, tmp_path
+):
+    """Test that cleanup uses config snapshot and changes during cleanup don't affect operation."""
+    from custom_components.retention_cleaner.coordinator import (
+        RetentionCleanerCoordinator,
+    )
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+            "pattern": "*.log",
+            "retention_days": 7,
+            "dry_run": False,
+        },
+        entry_id="test_entry_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        for i in range(5):
+            file = media_dir / f"test_{i}.log"
+            file.touch()
+            old_time = time_module.time() - (8 * 24 * 60 * 60)
+            os.utime(file, (old_time, old_time))
+
+        original_retention = coordinator.retention_days
+        assert original_retention == 7, "Should start with retention_days=7"
+
+        with patch(
+            "custom_components.retention_cleaner.coordinator._cleanup_folder"
+        ) as mock_cleanup:
+            mock_cleanup.return_value = Mock(
+                deleted=5,
+                total_after=0,
+                older_remaining=0,
+                path_available=True,
+                deleted_bytes=0,
+            )
+
+            cleanup_task = coordinator.async_run_cleanup_now()
+
+            await hass.async_block_till_done()
+            await cleanup_task
+
+            mock_cleanup.assert_called_once()
+            call_args = mock_cleanup.call_args
+            snapshot_retention = call_args[0][2]
+
+            assert (
+                snapshot_retention == original_retention
+            ), "Cleanup should use original retention_days value from snapshot"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_async_update_config_value_persists(
+    hass: HomeAssistant, mock_setup_entry
+):
+    """Test that async_update_config_value persists changes to entry.options."""
+    from custom_components.retention_cleaner.const import CONF_RETENTION_DAYS
+    from custom_components.retention_cleaner.coordinator import (
+        RetentionCleanerCoordinator,
+    )
+
+    mock_setup_entry.add_to_hass(hass)
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        assert coordinator.retention_days == 7, "Should start with retention_days=7"
+        assert mock_setup_entry.options.get(CONF_RETENTION_DAYS, 7) == 7
+
+        with patch.object(
+            hass.config_entries, "async_update_entry"
+        ) as mock_update_entry:
+            await coordinator.async_update_config_value(CONF_RETENTION_DAYS, 14)
+
+            mock_update_entry.assert_called_once()
+            call_kwargs = mock_update_entry.call_args.kwargs
+            assert "options" in call_kwargs, "Should update options parameter"
+            assert (
+                call_kwargs["options"][CONF_RETENTION_DAYS] == 14
+            ), "Should set new retention_days value in options"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_async_update_config_value_triggers_refresh(
+    hass: HomeAssistant, mock_setup_entry
+):
+    """Test that async_update_config_value triggers coordinator refresh."""
+    from custom_components.retention_cleaner.const import CONF_MAX_DELETES
+    from custom_components.retention_cleaner.coordinator import (
+        RetentionCleanerCoordinator,
+    )
+
+    mock_setup_entry.add_to_hass(hass)
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        with (
+            patch.object(hass.config_entries, "async_update_entry"),
+            patch.object(coordinator, "async_request_refresh") as mock_refresh,
+        ):
+            await coordinator.async_update_config_value(CONF_MAX_DELETES, 200)
+
+            mock_refresh.assert_called_once()
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_async_update_config_value_calls_setup_daily_schedule_for_run_at(
+    hass: HomeAssistant, mock_setup_entry
+):
+    """Test that updating CONF_RUN_AT calls async_setup_daily_schedule."""
+    from custom_components.retention_cleaner.const import CONF_RUN_AT
+    from custom_components.retention_cleaner.coordinator import (
+        RetentionCleanerCoordinator,
+    )
+
+    mock_setup_entry.add_to_hass(hass)
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        with (
+            patch.object(hass.config_entries, "async_update_entry"),
+            patch.object(coordinator, "async_request_refresh"),
+            patch.object(
+                coordinator, "async_setup_daily_schedule"
+            ) as mock_setup_schedule,
+        ):
+            await coordinator.async_update_config_value(CONF_RUN_AT, "04:30")
+
+            mock_setup_schedule.assert_called_once()
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_config_snapshot_during_scan(
+    hass: HomeAssistant, mock_setup_entry, tmp_path
+):
+    """Test that scan uses config snapshot and changes during scan don't affect operation."""
+    from custom_components.retention_cleaner.coordinator import (
+        RetentionCleanerCoordinator,
+    )
+
+    media_dir = tmp_path / "media" / "test"
+    media_dir.mkdir(parents=True)
+
+    mock_setup_entry = MockConfigEntry(
+        domain="retention_cleaner",
+        title="Test Cleanup",
+        data={
+            **mock_setup_entry.data,
+            "base_path": str(media_dir),
+            "pattern": "*.jpg",
+            "retention_days": 7,
+        },
+        entry_id="test_entry_123",
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        for i in range(3):
+            file = media_dir / f"test_{i}.jpg"
+            file.touch()
+
+        original_retention = coordinator.retention_days
+        assert original_retention == 7, "Should start with retention_days=7"
+
+        with patch(
+            "custom_components.retention_cleaner.coordinator._scan_folder"
+        ) as mock_scan:
+            mock_scan.return_value = Mock(
+                total_files=3,
+                older_than_retention=1,
+                path_available=True,
+                total_size_bytes=0,
+                older_than_retention_size_bytes=0,
+            )
+
+            await coordinator.async_run_scan_now()
+            await hass.async_block_till_done()
+
+            mock_scan.assert_called_once()
+            call_args = mock_scan.call_args
+            snapshot_retention = call_args[0][2]
+
+            assert (
+                snapshot_retention == original_retention
+            ), "Scan should use original retention_days value from snapshot"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_config_snapshot_captures_all_config_fields(
+    hass: HomeAssistant, mock_setup_entry
+):
+    """Test that ConfigSnapshot captures all configuration fields."""
+    from custom_components.retention_cleaner.coordinator import (
+        ConfigSnapshot,
+        RetentionCleanerCoordinator,
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        snapshot = ConfigSnapshot(
+            base_path="/media/test",
+            pattern="*.jpg",
+            retention_days=7,
+            dry_run=True,
+            max_deletes=100,
+            run_at="02:00",
+            only_extensions=".mp4,.mkv",
+            except_extensions=".log",
+            keep_minimum_files=5,
+            max_files_in_folder=50,
+            remove_empty_folders=True,
+        )
+
+        assert snapshot.base_path == "/media/test", "Should capture base_path"
+        assert snapshot.pattern == "*.jpg", "Should capture pattern"
+        assert snapshot.retention_days == 7, "Should capture retention_days"
+        assert snapshot.dry_run is True, "Should capture dry_run"
+        assert snapshot.max_deletes == 100, "Should capture max_deletes"
+        assert snapshot.run_at == "02:00", "Should capture run_at"
+        assert snapshot.only_extensions == ".mp4,.mkv", "Should capture only_extensions"
+        assert snapshot.except_extensions == ".log", "Should capture except_extensions"
+        assert snapshot.keep_minimum_files == 5, "Should capture keep_minimum_files"
+        assert snapshot.max_files_in_folder == 50, "Should capture max_files_in_folder"
+        assert (
+            snapshot.remove_empty_folders is True
+        ), "Should capture remove_empty_folders"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_async_update_config_value_merges_with_existing_options(
+    hass: HomeAssistant, mock_setup_entry
+):
+    """Test that async_update_config_value merges with existing options."""
+    from custom_components.retention_cleaner.const import (
+        CONF_MAX_DELETES,
+        CONF_RETENTION_DAYS,
+    )
+    from custom_components.retention_cleaner.coordinator import (
+        RetentionCleanerCoordinator,
+    )
+
+    mock_setup_entry.add_to_hass(hass)
+
+    hass.config_entries.async_update_entry(
+        mock_setup_entry,
+        options={CONF_MAX_DELETES: 50},
+    )
+
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        with patch.object(
+            hass.config_entries, "async_update_entry"
+        ) as mock_update_entry:
+            await coordinator.async_update_config_value(CONF_RETENTION_DAYS, 14)
+
+            call_kwargs = mock_update_entry.call_args.kwargs
+            assert (
+                call_kwargs["options"][CONF_MAX_DELETES] == 50
+            ), "Should preserve existing option"
+            assert (
+                call_kwargs["options"][CONF_RETENTION_DAYS] == 14
+            ), "Should add new option"
+
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_async_update_config_value_with_multiple_updates(
+    hass: HomeAssistant, mock_setup_entry
+):
+    """Test multiple consecutive config value updates."""
+    from custom_components.retention_cleaner.const import (
+        CONF_DRY_RUN,
+        CONF_MAX_DELETES,
+        CONF_RETENTION_DAYS,
+    )
+    from custom_components.retention_cleaner.coordinator import (
+        RetentionCleanerCoordinator,
+    )
+
+    mock_setup_entry.add_to_hass(hass)
+    coordinator = RetentionCleanerCoordinator(hass, mock_setup_entry)
+
+    try:
+        with (
+            patch.object(hass.config_entries, "async_update_entry"),
+            patch.object(coordinator, "async_request_refresh"),
+        ):
+            await coordinator.async_update_config_value(CONF_RETENTION_DAYS, 14)
+            await coordinator.async_update_config_value(CONF_MAX_DELETES, 200)
+            await coordinator.async_update_config_value(CONF_DRY_RUN, False)
+
+            await hass.async_block_till_done()
+
+    finally:
+        await coordinator.async_shutdown()
