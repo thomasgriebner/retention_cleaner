@@ -7,53 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.2.0] - 2026-02-03
 
 ### Added
-- Configuration entities for runtime-editable configuration without restarting Home Assistant
-  - **Number entities (4)**:
-    - `retention_days` (1-3650 days) - Change retention period via UI, triggers immediate scan
-    - `max_deletes` (1-10,000 files) - Maximum files to delete per cleanup run
-    - `keep_minimum_files` (0-10,000 files) - Minimum files to always preserve
-    - `max_files_in_folder` (0-1,000,000 files) - Maximum total files trigger cleanup
-  - **Switch entities (2)**:
-    - `dry_run` (on/off) - Toggle simulation mode without triggering scan (migrated from Select)
-    - `remove_empty_folders` (on/off) - Auto-remove empty directories after cleanup
-  - **Text entities (3)**:
-    - `pattern` - Edit glob pattern (e.g., `**/*.jpg`) with validation against dangerous patterns
-    - `only_extensions` - Comma-separated include list for file extensions (e.g., `.mp4,.jpg`)
-    - `except_extensions` - Comma-separated exclude list for file extensions (e.g., `.tmp,.log`)
-    - All text entities validate input (extension format, pattern safety) and enforce mutual exclusion rules
-  - **Time entity (1)**:
-    - `run_at` (HH:MM format) - Change daily cleanup time, automatically reschedules next cleanup
-  - **Sensor (1)**:
-    - `base_path` (read-only, diagnostic category) - Displays configured base path
-  - All config entities use `EntityCategory.CONFIG` for proper UI grouping (except base_path sensor which uses DIAGNOSTIC)
-- ConfigSnapshot pattern for race-condition prevention during cleanup operations
-  - Immutable config snapshots captured at start of scan/cleanup operations
-  - Configuration changes during operations don't affect in-progress scans/cleanups
-  - Changes take effect on next operation for consistency
-- Live configuration updates trigger immediate coordinator refresh
-  - Number, Text, and Time entity changes trigger automatic scan to update file counts
-  - Switch entity changes update config only (no scan needed)
-  - Changes are atomic and immediately persisted via `async_update_config_value()`
-- Cross-field validation for pattern and extension mutual exclusion
-  - Prevents simultaneous use of custom pattern with extension filters
-  - Enforces only_extensions OR except_extensions, not both
-  - Validation enforced at both config flow and entity update time
+- Runtime configuration entities for editing settings without restarting Home Assistant
+  - **Number entities**: `retention_days`, `max_deletes`, `keep_minimum_files`, `max_files_in_folder`
+  - **Switch entities**: `dry_run`, `remove_empty_folders`
+  - **Text entities**: `pattern`, `only_extensions`, `except_extensions` (with input validation)
+  - **Time entity**: `run_at` for changing daily cleanup schedule
+  - **Sensor**: `base_path` (read-only, diagnostic)
+  - Changes to number, text, and time entities trigger immediate scan to update file counts
+  - Switch entity changes apply immediately without triggering scan
 
 ### Changed
-- Migrated `dry_run` from Select entity (Off/On options) to Switch entity (on/off) for better user experience
-- Sensor entities no longer expose configuration as attributes (`base_path`, `pattern`, `retention_days` removed from sensor attributes)
-- Configuration now managed through dedicated config entities for frequently changed values
-- Options flow remains for initial setup, but runtime changes use config entities
-- Sensor units: `suggested_unit_of_measurement=MEGABYTES` with `precision=2` for deleted_bytes sensors
-- Test coverage improved to 99.17% with 416 comprehensive tests including new entity platforms
-- All entity platforms now properly integrated (number, switch, text, time, sensor platforms)
+- `dry_run` migrated from Select entity to Switch entity for better user experience
+- Configuration values moved from sensor attributes to dedicated config entities
+- Deleted bytes sensors now display in MB with 2 decimal places
+
+### Fixed
+- Number configuration entities now return integer values instead of float, preventing decimal separators (commas) in localized Home Assistant UIs
 
 ### Breaking Changes
 - **Removed sensor attributes**: `base_path`, `pattern`, and `retention_days` no longer available as sensor extra_state_attributes
   - Migration: Use the new config entities instead (automatically created for all instances)
-  - `base_path` is now a separate diagnostic sensor entity (read-only)
-  - `pattern` is now an editable text entity (triggers scan on change)
-  - `retention_days` is now an editable number entity (triggers scan on change)
   - Existing automations or templates reading sensor attributes must be updated to use new entity IDs
 
 ## [1.1.1] - 2026-01-26
