@@ -135,10 +135,10 @@ class RetentionCleanerNumberEntity(
         )
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         """Return the current value from coordinator."""
         value = getattr(self.coordinator, self.entity_description.key)
-        return float(value)
+        return int(value)
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the configuration value."""

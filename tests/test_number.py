@@ -950,3 +950,200 @@ async def test_number_all_have_config_category(hass: HomeAssistant, init_integra
         assert (
             entity_entry.entity_category == EntityCategory.CONFIG
         ), f"Entity {entity_id} should have CONFIG category"
+
+
+# ==================== INTEGER TYPE VERIFICATION TESTS (TDD) ====================
+
+
+async def test_number_native_value_returns_int_not_float(
+    hass: HomeAssistant, init_integration
+):
+    """Test native_value property returns int type, not float."""
+    entity_keys = [
+        ("retention_days", "number.test_cleanup_retention_days"),
+        ("max_deletes", "number.test_cleanup_max_deletes"),
+        ("keep_minimum_files", "number.test_cleanup_keep_minimum_files"),
+        ("max_files_in_folder", "number.test_cleanup_max_files_in_folder"),
+    ]
+
+    for _key, entity_id in entity_keys:
+        entity = hass.data[NUMBER_DOMAIN].get_entity(entity_id)
+        assert entity is not None, f"Entity {entity_id} should exist"
+
+        native_value = entity.native_value
+        assert isinstance(
+            native_value, int
+        ), f"{entity_id} native_value should be int type, got {type(native_value)}"
+        assert not isinstance(
+            native_value, float
+        ), f"{entity_id} native_value should not be float type"
+
+
+async def test_number_retention_days_returns_int(hass: HomeAssistant, init_integration):
+    """Test retention_days number entity returns integer."""
+    entity = hass.data[NUMBER_DOMAIN].get_entity("number.test_cleanup_retention_days")
+    assert entity is not None, "retention_days entity should exist"
+
+    value = entity.native_value
+    assert isinstance(value, int), f"native_value should be int, got {type(value)}"
+    assert not isinstance(value, float), "native_value should not be float"
+    assert value == 7, "Should match initial retention_days config"
+
+
+async def test_number_max_deletes_returns_int(hass: HomeAssistant, init_integration):
+    """Test max_deletes number entity returns integer."""
+    entity = hass.data[NUMBER_DOMAIN].get_entity("number.test_cleanup_max_deletes")
+    assert entity is not None, "max_deletes entity should exist"
+
+    value = entity.native_value
+    assert isinstance(value, int), f"native_value should be int, got {type(value)}"
+    assert not isinstance(value, float), "native_value should not be float"
+    assert value == 100, "Should match initial max_deletes config"
+
+
+async def test_number_keep_minimum_files_returns_int(
+    hass: HomeAssistant, init_integration
+):
+    """Test keep_minimum_files number entity returns integer."""
+    entity = hass.data[NUMBER_DOMAIN].get_entity(
+        "number.test_cleanup_keep_minimum_files"
+    )
+    assert entity is not None, "keep_minimum_files entity should exist"
+
+    value = entity.native_value
+    assert isinstance(value, int), f"native_value should be int, got {type(value)}"
+    assert not isinstance(value, float), "native_value should not be float"
+    assert value == 5, "Should match initial keep_minimum_files config"
+
+
+async def test_number_max_files_in_folder_returns_int(
+    hass: HomeAssistant, init_integration
+):
+    """Test max_files_in_folder number entity returns integer."""
+    entity = hass.data[NUMBER_DOMAIN].get_entity(
+        "number.test_cleanup_max_files_in_folder"
+    )
+    assert entity is not None, "max_files_in_folder entity should exist"
+
+    value = entity.native_value
+    assert isinstance(value, int), f"native_value should be int, got {type(value)}"
+    assert not isinstance(value, float), "native_value should not be float"
+    assert value == 50, "Should match initial max_files_in_folder config"
+
+
+@pytest.mark.parametrize(
+    ("entity_key", "entity_id", "new_value"),
+    [
+        ("retention_days", "number.test_cleanup_retention_days", 14),
+        ("max_deletes", "number.test_cleanup_max_deletes", 500),
+        ("keep_minimum_files", "number.test_cleanup_keep_minimum_files", 100),
+        ("max_files_in_folder", "number.test_cleanup_max_files_in_folder", 75),
+    ],
+)
+async def test_number_set_value_maintains_int_type(
+    hass: HomeAssistant, init_integration, entity_key, entity_id, new_value
+):
+    """Test that setting values maintains int type after update."""
+    await hass.services.async_call(
+        NUMBER_DOMAIN,
+        SERVICE_SET_VALUE,
+        {ATTR_ENTITY_ID: entity_id, ATTR_VALUE: new_value},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    entity = hass.data[NUMBER_DOMAIN].get_entity(entity_id)
+    value = entity.native_value
+
+    assert isinstance(
+        value, int
+    ), f"After update, {entity_id} native_value should be int, got {type(value)}"
+    assert not isinstance(
+        value, float
+    ), f"After update, {entity_id} native_value should not be float"
+    assert value == new_value, f"Value should be {new_value}"
+
+
+async def test_number_int_type_with_boundary_values(
+    hass: HomeAssistant, init_integration
+):
+    """Test integer type is maintained at boundary values."""
+    test_cases = [
+        ("number.test_cleanup_retention_days", 1),
+        ("number.test_cleanup_retention_days", 3650),
+        ("number.test_cleanup_max_deletes", 1),
+        ("number.test_cleanup_max_deletes", 10000),
+        ("number.test_cleanup_keep_minimum_files", 0),
+        ("number.test_cleanup_keep_minimum_files", 10000),
+        ("number.test_cleanup_max_files_in_folder", 0),
+        ("number.test_cleanup_max_files_in_folder", 1000000),
+    ]
+
+    for entity_id, boundary_value in test_cases:
+        await hass.services.async_call(
+            NUMBER_DOMAIN,
+            SERVICE_SET_VALUE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_VALUE: boundary_value},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+        entity = hass.data[NUMBER_DOMAIN].get_entity(entity_id)
+        value = entity.native_value
+
+        assert isinstance(
+            value, int
+        ), f"{entity_id} at boundary {boundary_value} should be int, got {type(value)}"
+        assert not isinstance(
+            value, float
+        ), f"{entity_id} at boundary {boundary_value} should not be float"
+        assert (
+            value == boundary_value
+        ), f"{entity_id} should equal boundary value {boundary_value}"
+
+
+async def test_number_type_annotation_matches_implementation(
+    hass: HomeAssistant, init_integration
+):
+    """Test that native_value type annotation matches actual return type."""
+    import inspect
+
+    from custom_components.retention_cleaner.number import (
+        RetentionCleanerNumberEntity,
+    )
+
+    entity = hass.data[NUMBER_DOMAIN].get_entity("number.test_cleanup_retention_days")
+    assert entity is not None, "Entity should exist"
+
+    annotations = inspect.get_annotations(
+        RetentionCleanerNumberEntity.native_value.fget
+    )
+    return_type = annotations.get("return")
+
+    actual_value = entity.native_value
+    assert isinstance(
+        actual_value, int
+    ), f"Actual value should be int, got {type(actual_value)}"
+
+    if return_type is not None:
+        assert (
+            return_type is int or return_type == "int"
+        ), f"Type annotation should be int, got {return_type}"
+
+
+async def test_number_coordinator_values_are_int(hass: HomeAssistant, init_integration):
+    """Test that coordinator stores values as int to ensure consistency."""
+    coordinator = init_integration.runtime_data
+
+    assert isinstance(
+        coordinator.retention_days, int
+    ), "Coordinator retention_days should be int"
+    assert isinstance(
+        coordinator.max_deletes, int
+    ), "Coordinator max_deletes should be int"
+    assert isinstance(
+        coordinator.keep_minimum_files, int
+    ), "Coordinator keep_minimum_files should be int"
+    assert isinstance(
+        coordinator.max_files_in_folder, int
+    ), "Coordinator max_files_in_folder should be int"
