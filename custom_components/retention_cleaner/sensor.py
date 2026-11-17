@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.const import EntityCategory
 from homeassistant.components.sensor import (
-    EntityCategory,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
